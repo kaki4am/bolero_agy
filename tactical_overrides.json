@@ -1,0 +1,10 @@
+{
+    "RISK_MULTIPLIER": 0.8,
+    "SL_MULT_OFFSET": 0.3,
+    "VOL_SPIKE_MULT_OFFSET": 0.2,
+    "PORTFOLIO_EJECT_OFFSET": 1.0,
+    "blacklist_add": [
+        "ZECUSDT"
+    ],
+    "rationale": "Reducing risk exposure and blacklisting privacy asset ZECUSDT in response to FATF stablecoin AML enforcement calls amidst a market downturn."
+}

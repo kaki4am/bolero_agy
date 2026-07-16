@@ -1,0 +1,42 @@
+# Environment & secrets
+.env
+.bash_history
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Cache
+.backtester_cache/
+.semantic_search/
+
+# Runtime state (regenerated)
+active_positions.json
+backtest_status.json
+daily_report.json
+daily_opinion.html
+cleanup_log.json
+db_stats_summary.txt
+
+# Databases
+*.db
+
+# Logs
+*.log
+
+# Gemini/AGY
+.gemini/
+.kiro/
+
+# System
+.local/
+.npm/
+.ssh/
+.config/
+.profile
+.bashrc
+install_temp/
+
+# Backups
+backups/

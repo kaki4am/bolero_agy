@@ -1,0 +1,14 @@
+[Unit]
+Description=Backtest Optimizer
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root
+ExecStart=/root/venv/bin/python -u /root/tuner.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
