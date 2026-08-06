@@ -28,6 +28,18 @@ class PortfolioBacktester:
         # Set up cache directory and unique file name
         cache_dir = '/root/.backtester_cache'
         os.makedirs(cache_dir, exist_ok=True)
+        
+        # Clean up old cache files (older than 2 days)
+        import time
+        now = time.time()
+        for f in os.listdir(cache_dir):
+            f_path = os.path.join(cache_dir, f)
+            if os.path.isfile(f_path) and f_path.endswith('.pkl'):
+                if os.stat(f_path).st_mtime < now - 2 * 86400:
+                    try:
+                        os.remove(f_path)
+                    except:
+                        pass
         today_str = date.today().isoformat()
         sym_hash = hashlib.md5("".join(sorted(self.symbols)).encode('utf-8')).hexdigest()
         cache_file = f"{cache_dir}/cache_{sym_hash}_{self.interval}_{self.lookback.replace(' ', '_')}_{today_str}.pkl"
@@ -357,35 +369,15 @@ class PortfolioBacktester:
                     if (idx - pos.get('last_close_time', -99999)) < cooldown_min:
                         continue
                     
-                    # Session Sniper: Only enter during profitable time windows
-                    ts_hour = ts.hour if hasattr(ts, 'hour') else 12
-                    ts_dow = ts.weekday() if hasattr(ts, 'weekday') else 3
-                    allowed_hours = {14, 15, 16, 21}
-                    blocked_days = {0, 1, 2}  # Mon, Tue, Wed
-                    if ts_hour not in allowed_hours: continue
-                    if ts_dow in blocked_days: continue
-                    
                     setup = None
                     if btc_uptrend and btc_uptrend_15m and pair_safe:
                         if price > vwap:
-                            rsi_prev = s_data['rsi'][idx-1] if idx > 0 else 50.0
-                            
-                            # Setup 1: RSI Pullback (RSI crosses above 30 from below)
-                            if rsi > 30 and rsi_prev <= 30:
-                                setup = "V100_Pullback"
-                            
-                            # Setup 2: MACD Histogram Reversal (histogram turns positive from negative)
-                            if not setup:
-                                macdh_curr = s_data['macdh'][idx]
-                                macdh_prev = s_data['macdh'][idx-1] if idx > 0 else 0.0
-                                if macdh_curr > 0 and macdh_prev <= 0 and rsi < 60:
-                                    setup = "V100_MACD_Rev"
-                            
-                            # Setup 3: Bollinger Band Lower Bounce (price at lower band + RSI < 40)
-                            if not setup:
-                                bb_lower = s_data['bb_lower'][idx]
-                                if price <= bb_lower * 1.01 and rsi < 40:
-                                    setup = "V100_BB_Bounce"
+                            macdh_curr = s_data['macdh'][idx]
+                            macdh_prev = s_data['macdh'][idx-1] if idx > 0 else 0.0
+                            macd = s_data['macd'][idx]
+                            adx = s_data['adx'][idx]
+                            if macdh_curr > 0 and macdh_prev <= 0 and macd > 0 and adx > 20 and rsi < 70:
+                                setup = "V110_MACD_Mom"
                         
                     if setup:
                         volatility = atr / price

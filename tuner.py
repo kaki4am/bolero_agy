@@ -1,9 +1,7 @@
 import asyncio
-import itertools
 import os
 import json
 import time
-import random
 import pandas_ta as ta
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -29,7 +27,6 @@ SEARCH_SPACE = {
     'ATR_SL_MULT': [2.5, 3.0, 3.5],
     'PORTFOLIO_EJECT': [-5.0],
     'PORTFOLIO_HARVEST': [4.0, 5.0],
-    'VOL_SPIKE_MULTIPLIER': [1.5, 1.8],
     'SL_MIN_PCT': [0.015],
     'SL_MAX_PCT': [0.030, 0.040],
     'BE_TRIGGER': [0.010, 0.015, 0.020],
@@ -105,6 +102,18 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
     cache_dir = "/root/.backtester_cache"
     os.makedirs(cache_dir, exist_ok=True)
     
+    # Clean up old cache files (older than 2 days)
+    import time
+    now = time.time()
+    for f in os.listdir(cache_dir):
+        f_path = os.path.join(cache_dir, f)
+        if os.path.isfile(f_path) and f_path.endswith('.pkl'):
+            if os.stat(f_path).st_mtime < now - 2 * 86400:
+                try:
+                    os.remove(f_path)
+                except:
+                    pass
+    
     clean_start = start_str.replace(' ', '_').replace(':', '-')
     clean_end = end_str.replace(' ', '_').replace(':', '-')
     cache_file = f"{cache_dir}/segment_{sym_hash}_{clean_start}_{clean_end}.pkl"
@@ -145,12 +154,13 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
         tester.btc_15m['ema200'] = ta.ema(tester.btc_15m['close'], length=200)
 
         active_symbols = []
-        for s in symbols:
+        import asyncio
+        async def fetch_symbol(s):
             try:
                 kl_1m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_1MINUTE, start_str, end_str)
                 kl_15m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_15MINUTE, btc_15m_start, end_str)
                 if not kl_1m or len(kl_1m) < 100:
-                    continue
+                    return s, None
                 
                 df_1m = pd.DataFrame(kl_1m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
                 for col in ['open', 'high', 'low', 'close', 'volume']:
@@ -162,10 +172,18 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
                     df_15m[col] = df_15m[col].astype(float)
                 df_15m['timestamp'] = pd.to_datetime(df_15m['timestamp'], unit='ms')
                 
-                tester.pair_data[s] = {'1m': df_1m, '15m': df_15m}
-                active_symbols.append(s)
+                return s, {'1m': df_1m, '15m': df_15m}
             except:
-                pass
+                return s, None
+
+        chunk_size = 10
+        for i in range(0, len(symbols), chunk_size):
+            chunk = symbols[i:i + chunk_size]
+            results = await asyncio.gather(*(fetch_symbol(sym) for sym in chunk))
+            for sym, data in results:
+                if data is not None:
+                    tester.pair_data[sym] = data
+                    active_symbols.append(sym)
                 
         tester.symbols = active_symbols
         
@@ -188,143 +206,147 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
         return None
 
 async def optimize():
-    keys = SEARCH_SPACE.keys()
-    values = SEARCH_SPACE.values()
-    combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    import optuna
     
-    prev_status = get_status()
-    resume_index = 0
     best_score = -float('inf')
     best_params = None
     pairs = []
 
-    if prev_status and prev_status.get('total_combinations') == len(combinations) and prev_status.get('progress', 0) < len(combinations):
-        resume_index = prev_status.get('progress', 0)
-        best_score = prev_status.get('best_profit', -float('inf'))
-        best_params = prev_status.get('best_params')
-        pairs = prev_status.get('pairs', [])
-        status = prev_status
-        if "run_started" not in status:
-            status["run_started"] = "Unknown"
-        status["last_run"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        status["status"] = "Resuming..."
-        log_event(status, f"Resuming optimization from index {resume_index}/{len(combinations)}. Current Best Score: {best_score:.2f}%")
-    else:
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        status = {
-            "last_run": now_str,
-            "run_started": now_str,
-            "status": "Initializing...",
-            "progress": 0,
-            "total_combinations": len(combinations),
-            "best_profit": -100.0,
-            "best_params": None,
-            "pairs": [],
-            "eta": "Calculating...",
-            "logs": []
-        }
-        log_event(status, f"Starting Weighted Cross-Regime Optimization with {len(combinations)} combinations.")
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    status = {
+        "last_run": now_str,
+        "run_started": now_str,
+        "status": "Initializing...",
+        "progress": 0,
+        "total_combinations": 100,  # 100 trials for Optuna
+        "best_profit": -100.0,
+        "best_params": None,
+        "pairs": [],
+        "eta": "Calculating...",
+        "logs": []
+    }
+    log_event(status, "Starting Bayesian Optimization (Optuna) with Walk-Forward Validation.")
 
-    if not pairs:
-        pairs = await get_top_pairs(limit=50)
-        status["pairs"] = pairs
-        save_status(status)
+    pairs = await get_top_pairs(limit=20)  # Use top 20 pairs for faster training
+    status["pairs"] = pairs
+    save_status(status)
 
-    # 1. Initialize Main 5-Day Recency Backtester
-    bt_main = PortfolioBacktester(pairs, lookback='5 days ago UTC')
-    
-    # 2. Select 3 Random Historical Weeks from the last 6 months (30 to 180 days ago)
-    # Use 10 altcoins + BTC for meaningful historical validation
-    sampled_alts = random.sample([p for p in pairs if p != 'BTCUSDT'], min(10, len(pairs)-1))
-    hist_symbols = ['BTCUSDT'] + sampled_alts
-    
     client = await AsyncClient.create(API_KEY, API_SECRET, testnet=USE_TESTNET)
     
-    log_event(status, "Fetching current 5-day market data...")
-    await bt_main.fetch_data(status_callback=lambda msg: log_event(status, msg))
+    now_utc = datetime.now(timezone.utc)
+    train_start = now_utc - timedelta(days=35)
+    train_end = now_utc - timedelta(days=5)
+    test_start = now_utc - timedelta(days=5)
+    test_end = now_utc
     
-    log_event(status, f"Fetching 3 historical segments for robust checks on: {', '.join([s.replace('USDT', '') for s in hist_symbols])}...")
-    hist_testers = []
-    for idx in range(3):
-        days_back = random.randint(30, 180)
-        start_dt = datetime.now(timezone.utc) - timedelta(days=days_back)
-        end_dt = start_dt + timedelta(days=7)
-        start_str = start_dt.strftime("%Y-%m-%d UTC")
-        end_str = end_dt.strftime("%Y-%m-%d UTC")
+    train_start_str = train_start.strftime("%Y-%m-%d UTC")
+    train_end_str = train_end.strftime("%Y-%m-%d UTC")
+    test_start_str = test_start.strftime("%Y-%m-%d UTC")
+    test_end_str = test_end.strftime("%Y-%m-%d UTC")
+    
+    log_event(status, f"Fetching In-Sample (Train) data: {train_start_str} to {train_end_str}...")
+    bt_train = await fetch_historical_segment(client, train_start_str, train_end_str, pairs)
+    if not bt_train:
+        log_event(status, "Failed to load train data. Aborting optimization.")
+        await client.close_connection()
+        return
         
-        log_event(status, f"  Loading Segment #{idx+1}: {start_dt.strftime('%B %Y')} ({days_back} days ago)...")
-        tester = await fetch_historical_segment(client, start_str, end_str, hist_symbols)
-        if tester and len(tester.symbols) > 1:
-            hist_testers.append(tester)
-            
+    log_event(status, f"Fetching Out-Of-Sample (Test) data: {test_start_str} to {test_end_str}...")
+    bt_test = await fetch_historical_segment(client, test_start_str, test_end_str, pairs)
+    if not bt_test:
+        log_event(status, "Failed to load test data. Aborting optimization.")
+        await client.close_connection()
+        return
+        
     await client.close_connection()
 
     status["status"] = "Pre-calculating Indicators..."
-    bt_main.precalculate_all(SEARCH_SPACE, status_callback=lambda msg: log_event(status, msg))
-    for idx, ht in enumerate(hist_testers):
-        ht.precalculate_all(SEARCH_SPACE, status_callback=lambda msg: log_event(status, f"  Calculating indicators for Segment #{idx+1}..."))
+    bt_train.precalculate_all(SEARCH_SPACE, status_callback=lambda msg: log_event(status, f"Train: {msg}"))
+    bt_test.precalculate_all(SEARCH_SPACE, status_callback=lambda msg: log_event(status, f"Test: {msg}"))
 
-    status["status"] = "Running Weighted Grid Search"
-    log_event(status, f"Simulation started. Active Segments: Current + {len(hist_testers)} Historical Weeks.")
+    status["status"] = "Running Bayesian Optimization (Optuna)"
+    log_event(status, "Simulation started. Running 100 trials on In-Sample data.")
     
     start_time = time.time()
-    for i, params in enumerate(combinations):
-        if i < resume_index:
-            continue
-
-        # Run Current 5-Day
-        cur_profit = bt_main.run(params)
+    
+    def objective(trial):
+        params = {
+            'EMA_FAST': trial.suggest_categorical('EMA_FAST', SEARCH_SPACE['EMA_FAST']),
+            'EMA_SLOW': trial.suggest_categorical('EMA_SLOW', SEARCH_SPACE['EMA_SLOW']),
+            'MIN_VOLATILITY': trial.suggest_categorical('MIN_VOLATILITY', SEARCH_SPACE['MIN_VOLATILITY']),
+            'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 1.0, 5.0),
+            'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 5.0, 25.0),
+            'COOLDOWN_PERIOD': trial.suggest_categorical('COOLDOWN_PERIOD', SEARCH_SPACE['COOLDOWN_PERIOD']),
+            'ATR_SL_MULT': trial.suggest_float('ATR_SL_MULT', 1.5, 4.5),
+            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
+            'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 10.0),
+            'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.025),
+            'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.025, 0.060),
+            'BE_TRIGGER': trial.suggest_float('BE_TRIGGER', 0.005, 0.030),
+            'BE_LOCK': trial.suggest_float('BE_LOCK', 0.001, 0.005),
+            'TRAILING_TRIGGER': trial.suggest_float('TRAILING_TRIGGER', 0.015, 0.050),
+            'TRAILING_DIST': trial.suggest_float('TRAILING_DIST', 0.005, 0.025),
+            'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.100),
+            'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.030),
+            'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),
+            'SCALE_2_POS': trial.suggest_float('SCALE_2_POS', 0.3, 0.8),
+            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6),
+            'VOLUME_SMA_WINDOW': trial.suggest_categorical('VOLUME_SMA_WINDOW', SEARCH_SPACE['VOLUME_SMA_WINDOW'])
+        }
         
-        # Run Historical Segments
-        hist_profits = []
-        for ht in hist_testers:
-            h_prof = ht.run(params)
-            hist_profits.append(h_prof)
-            
-        hist_avg = sum(hist_profits) / len(hist_profits) if hist_profits else 0.0
+        train_profit = bt_train.run(params)
         
-        # Weighted Score Formula: 50% recency + 50% historical average
-        weighted_score = (0.50 * cur_profit) + (0.50 * hist_avg)
-        
-        if weighted_score > best_score:
-            best_score = weighted_score
+        nonlocal best_score, best_params
+        if train_profit > best_score:
+            best_score = train_profit
             best_params = params
             status['best_profit'] = best_score
             status['best_params'] = best_params
-            log_event(status, f"New Best! Score: {weighted_score:.2f}% (Cur: {cur_profit:+.1f}%, Hist: {hist_avg:+.1f}%) | SL: {params.get('ATR_SL_MULT')} | Harvest: {params.get('PORTFOLIO_HARVEST')}%")
-
-        if 'all_scores' not in status:
-            status['all_scores'] = []
-        status['all_scores'].append(round(weighted_score, 3))
-
-        if 'recent_scores' not in status:
-            status['recent_scores'] = []
-        status['recent_scores'].append(round(weighted_score, 3))
-        if len(status['recent_scores']) > 60:
-            status['recent_scores'].pop(0)
-
-        if i % 5 == 0:
+            log_event(status, f"New Best Train Score: {train_profit:.2f}%")
+            
+        status["progress"] += 1
+        
+        if status["progress"] % 5 == 0:
             elapsed = time.time() - start_time
-            processed = (i - resume_index) + 1
-            avg_time = elapsed / processed
-            remaining = (len(combinations) - i) * avg_time
+            avg_time = elapsed / status["progress"]
+            remaining = (100 - status["progress"]) * avg_time
             eta_time = datetime.now() + timedelta(seconds=remaining)
             status["eta"] = eta_time.strftime('%H:%M:%S')
-            status["progress"] = i
             save_status(status)
-
+            
+        status.setdefault('all_scores', []).append(round(train_profit, 3))
+        
+        return train_profit
+        
+    study = optuna.create_study(
+        study_name="v100_momentum",
+        storage="sqlite:////root/optuna_study.db",
+        load_if_exists=True,
+        direction="maximize"
+    )
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    
+    study.optimize(objective, n_trials=100)
+    
+    best_params = study.best_params
+    train_score = study.best_value
+    
+    log_event(status, f"Training complete. Best In-Sample Profit: {train_score:.2f}%. Running Out-Of-Sample Validation...")
+    
+    # Out of Sample Validation
+    test_score = bt_test.run(best_params)
+    log_event(status, f"Out-Of-Sample Validation Profit: {test_score:.2f}%")
+    
+    if train_score > 0 and test_score > 0:
+        log_event(status, "Walk-Forward Validation PASSED. Deploying config.")
+        update_bot_config(best_params)
+    else:
+        log_event(status, "Walk-Forward Validation FAILED (OOS or Train profit is negative). Discarding config.")
+        
     status["status"] = "Idle"
-    status["progress"] = len(combinations)
+    status["progress"] = 100
     status["eta"] = "Complete"
-    log_event(status, "Weighted optimization complete. Overwriting config.json and restarting bot.")
-
-    if best_params:
-        if best_score > 0:
-            update_bot_config(best_params)
-            log_event(status, f"Deployed new config with score {best_score:.2f}%. Restarted bot.")
-        else:
-            log_event(status, f"Best score {best_score:.2f}% is negative. Keeping existing config (no deploy).")
-            save_status(status)
+    save_status(status)
 
 async def main_loop():
     while True:
@@ -336,7 +358,7 @@ async def main_loop():
             status["status"] = "Error"
             log_event(status, f"CRITICAL ERROR: {str(e)}")
             save_status(status)
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(main_loop())
