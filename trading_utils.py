@@ -13,8 +13,11 @@ def get_binance_client():
     return Client(api_key, api_secret)
 
 def init_db(db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trades (
@@ -25,9 +28,14 @@ def init_db(db_path='trading_bot.db'):
             quantity REAL,
             fee REAL DEFAULT 0,
             fee_asset TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            config_snapshot TEXT DEFAULT NULL
         )
     ''')
+    try:
+        cursor.execute("ALTER TABLE trades ADD COLUMN config_snapshot TEXT DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS failed_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,16 +53,16 @@ def init_db(db_path='trading_bot.db'):
     conn.commit()
     conn.close()
 
-def log_trade(pair, side, price, quantity, fee=0, fee_asset=None, db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path)
+def log_trade(pair, side, price, quantity, fee=0, fee_asset=None, config_snapshot=None, db_path='trading_bot.db'):
+    conn = sqlite3.connect(db_path, timeout=30.0)
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO trades (pair, side, price, quantity, fee, fee_asset) VALUES (?, ?, ?, ?, ?, ?)',
-                   (pair, side, price, quantity, fee, fee_asset))
+    cursor.execute('INSERT INTO trades (pair, side, price, quantity, fee, fee_asset, config_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                   (pair, side, price, quantity, fee, fee_asset, config_snapshot))
     conn.commit()
     conn.close()
 
 def log_failed_trade(pair, error, db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     cursor = conn.cursor()
     cursor.execute('INSERT INTO failed_trades (pair, error) VALUES (?, ?)', (pair, error))
     conn.commit()
@@ -75,7 +83,7 @@ def humanize_time(timestamp_str):
         return timestamp_str
 
 def get_trade_data(db_path='trading_bot.db', limit=None):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     if limit:
         trades_df = pd.read_sql_query(f"SELECT * FROM trades ORDER BY timestamp DESC LIMIT {limit}", conn)
     else:

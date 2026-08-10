@@ -13,7 +13,7 @@ async def main():
             
         pb = PortfolioBacktester(symbols=[
             'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'DOGEUSDT', 
-            'DOTUSDT', 'LTCUSDT', 'LINKUSDT', 'AVAXUSDT', 'MATICUSDT', 'UNIUSDT', 'ATOMUSDT', 
+            'DOTUSDT', 'LTCUSDT', 'LINKUSDT', 'AVAXUSDT', 'POLUSDT', 'UNIUSDT', 'ATOMUSDT', 
             'INJUSDT', 'RNDRUSDT', 'NEARUSDT', 'FILUSDT', 'OPUSDT', 'APTUSDT'
         ])
         await pb.fetch_data()

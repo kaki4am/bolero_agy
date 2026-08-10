@@ -11,7 +11,8 @@ def main():
         "🧬 Strategy Evolver (nightly code evolution at 1am)",
         "🔬 Weekly Trade Research (Sundays 3am, mines trade DB)",
         "📊 Price Data Research (bi-weekly, tests new signals)",
-        "📋 Research Reports (view latest findings)",
+        "👀 Asset Tracking Dashboard (active & restricted pairs)",
+        "💸 Forecast View (expected money based on last N days)",
         "❌ Exit"
     ]
     selected_idx = 0
@@ -46,7 +47,7 @@ def main():
             elif key.code == term.KEY_DOWN:
                 selected_idx = (selected_idx + 1) % len(options)
             elif key.code == term.KEY_ENTER or key == '\n' or key == '\r':
-                if selected_idx == 7:  # Exit option
+                if selected_idx == 8:  # Exit option
                     break
                 
                 print(term.clear)
@@ -61,7 +62,7 @@ def main():
                         # AI Risk Manager logs (hourly)
                         log_path = "/root/ai_manager.log"
                         if os.path.exists(log_path):
-                            subprocess.run(["tail", "-f", log_path])
+                            subprocess.run(["less", "+G", log_path])
                         else:
                             print(term.bold_red("AI Manager log not found. Runs hourly via cron."))
                             term.inkey(timeout=3)
@@ -77,7 +78,7 @@ def main():
                         # Weekly trade research log
                         log_path = "/root/weekly_research.log"
                         if os.path.exists(log_path):
-                            subprocess.run(["tail", "-f", log_path])
+                            subprocess.run(["less", "+G", log_path])
                         else:
                             print(term.bold_yellow("Weekly research log not found. Runs Sundays at 3am."))
                             term.inkey(timeout=3)
@@ -85,26 +86,16 @@ def main():
                         # Price data research (live output)
                         log_path = "/root/price_research.log"
                         if os.path.exists(log_path):
-                            subprocess.run(["tail", "-f", log_path])
+                            subprocess.run(["less", "+G", log_path])
                         else:
-                            print(term.bold_yellow("Price research log not found. It may not have run yet."))
-                            print(term.bold_yellow("Showing strategy_evolver.log instead (Ctrl+C to exit)..."))
-                            term.inkey(timeout=2)
-                            subprocess.run(["tail", "-f", "/root/strategy_evolver.log"])
-                    elif selected_idx == 6:
-                        # View research reports
-                        reports = []
-                        if os.path.exists("/root/price_research.html"):
-                            reports.append("/root/price_research.html")
-                        if os.path.exists("/root/weekly_research.html"):
-                            reports.append("/root/weekly_research.html")
-                        if os.path.exists("/root/daily_opinion.html"):
-                            reports.append("/root/daily_opinion.html")
-                        if reports:
-                            subprocess.run(["less"] + reports)
-                        else:
-                            print(term.bold_red("No research reports found yet. They generate on schedule."))
+                            print(term.bold_yellow("Price research log not found. Runs bi-weekly Sundays at 4am."))
                             term.inkey(timeout=3)
+                    elif selected_idx == 6:
+                        # View blacklist
+                        subprocess.run(["/root/venv/bin/python", "/root/view_blacklist.py"])
+                    elif selected_idx == 7:
+                        # Forecast View
+                        subprocess.run(["/root/venv/bin/python", "/root/forecast_dashboard.py"])
                 except Exception as e:
                     print(term.red(f"Error executing action: {e}"))
                     term.inkey(timeout=3)

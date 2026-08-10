@@ -42,18 +42,13 @@ class TradingBot:
         self.last_trade_time = {} # pair: timestamp
         self.last_dust_time = 0 # Track dust conversion frequency
         self.last_positions_save = 0 # Throttle position saves
+        self._pair_last_loss = {} # Per-pair loss tracking for adaptive cooldown
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V100 Multi-Setup Momentum
+        # Strategy V114 MACD Momentum
         self.config = {
             'EMA_FAST': 50,
             'EMA_SLOW': 200,
-            'BB_LENGTH': 20,
-            'BB_STD': 2.5,
-            'ADX_THRESHOLD': 30,
-            'CHOP_THRESHOLD': 50,
-            'VOL_TREND': 1.5,
-            'VOL_BREAKOUT': 1.8,
             'MIN_VOLATILITY': 0.0010,
             'BASE_RISK_PERCENT': 2.0,
             'MAX_RISK_PER_TRADE_PERCENT': 15.0,
@@ -61,10 +56,6 @@ class TradingBot:
             'MAX_PAIRS': 40,
             'PORTFOLIO_EJECT': -5.0,
             'PORTFOLIO_HARVEST': 4.0,
-            'VOL_MULT_LOW': 1.4,
-            'VOL_MULT_MED': 1.8,
-            'VOL_MULT_HIGH': 2.5,
-            'BTC_RSI_THRESHOLD': 30,
             'VOL_SPIKE_MULTIPLIER': 1.5,
             'SL_MIN_PCT': 0.015,
             'SL_MAX_PCT': 0.030,
@@ -74,7 +65,6 @@ class TradingBot:
             'TRAILING_DIST': 0.020,
             'VOLATILITY_CAP': 0.015,
             'ATR_SL_MULT': 3.0,
-            'VOLUME_SMA_WINDOW': 20,
             'SCALE_1_POS': 0.8,
             'SCALE_2_POS': 0.6,
             'SCALE_3_POS': 0.4
@@ -100,7 +90,6 @@ class TradingBot:
                     
                     self.config['BASE_RISK_PERCENT'] = self.base_config['BASE_RISK_PERCENT'] * overrides.get('RISK_MULTIPLIER', 1.0)
                     self.config['ATR_SL_MULT'] = self.base_config['ATR_SL_MULT'] + overrides.get('SL_MULT_OFFSET', 0.0)
-                    self.config['VOL_SPIKE_MULTIPLIER'] = self.base_config['VOL_SPIKE_MULTIPLIER'] + overrides.get('VOL_SPIKE_MULT_OFFSET', 0.0)
                     self.config['PORTFOLIO_EJECT'] = self.base_config['PORTFOLIO_EJECT'] + overrides.get('PORTFOLIO_EJECT_OFFSET', 0.0)
                     print(f"Loaded config with tactical overrides: Risk Mult={overrides.get('RISK_MULTIPLIER', 1.0)}, SL Offset={overrides.get('SL_MULT_OFFSET', 0.0)}")
                 except Exception as oe:
@@ -142,10 +131,13 @@ class TradingBot:
                     }
             payload = {
                 'active_positions': active_data,
-                'last_trade_time': self.last_trade_time
+                'last_trade_time': self.last_trade_time,
+                'pair_last_loss': self._pair_last_loss
             }
-            with open('/root/active_positions.json', 'w') as f:
+            tmp_path = '/root/active_positions.json.tmp'
+            with open(tmp_path, 'w') as f:
                 json.dump(payload, f, indent=4)
+            os.replace(tmp_path, '/root/active_positions.json')
         except Exception as e:
             print(f"Error saving active positions: {e}")
 
@@ -176,7 +168,9 @@ class TradingBot:
         print(f"Current USDT Balance: {usdt_free} | Initialized Total Portfolio Equity: {self.last_total_equity}")
         usdt_pairs = [t for t in tickers if t['symbol'].endswith('USDT')]
         
-        blacklisted = ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'EURUSDT', 'USDTUSDT', 'BUSDUSDT', 'DAIUSDT']
+        blacklisted = ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'EURUSDT', 'USDTUSDT', 'BUSDUSDT', 'DAIUSDT', 
+                       'SOLUSDT', 'AVAXUSDT', 'PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'LUNCUSDT',
+                       'FETUSDT', 'INJUSDT', 'NEARUSDT', 'DOTUSDT', 'FILUSDT', 'LDOUSDT', 'XECUSDT', 'SHIBUSDT', 'DODOUSDT']
         candidates = []
         for p in usdt_pairs:
             symbol = p['symbol']
@@ -208,6 +202,12 @@ class TradingBot:
 
         self.tracked_pairs = valid_pairs
         print(f"Tracking {len(self.tracked_pairs)} pairs.")
+        
+        try:
+            with open('/root/tracked_pairs.json', 'w') as f:
+                json.dump({'tracked': self.tracked_pairs}, f)
+        except Exception as e:
+            print(f"Failed to save tracked pairs: {e}")
 
         streams = [self.bm.kline_socket(pair, interval='1m') for pair in self.tracked_pairs]
         
@@ -297,11 +297,13 @@ class TradingBot:
     async def fetch_macro_trends(self):
         try:
             klines = await self.client.get_historical_klines("BTCUSDT", AsyncClient.KLINE_INTERVAL_1HOUR, "10 days ago UTC")
+            if len(klines) > 1: klines = klines[:-1]
             closes = pd.Series([float(k[4]) for k in klines])
             ema200 = ta.ema(closes, length=200).iloc[-1]
             rsi = ta.rsi(closes, length=14).iloc[-1]
 
             klines_15m = await self.client.get_historical_klines("BTCUSDT", AsyncClient.KLINE_INTERVAL_15MINUTE, "3 days ago UTC")
+            if len(klines_15m) > 1: klines_15m = klines_15m[:-1]
             closes_15m = pd.Series([float(k[4]) for k in klines_15m])
             ema200_15m = ta.ema(closes_15m, length=200).iloc[-1]
             btc_cp_15m = closes_15m.iloc[-1]
@@ -311,13 +313,14 @@ class TradingBot:
                 'btc_rsi': rsi,
                 'btc_uptrend_15m': btc_cp_15m > ema200_15m
             }
-            print("--- Market Status Update (Strategy V100 - Multi-Setup Momentum) ---")
+            print("--- Market Status Update (Strategy V114 - MACD Momentum) ---")
             print(f"BTC RSI: {rsi:.2f} | BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
             
             # Fetch 15m EMA data for all pairs in parallel batches
             async def fetch_pair_ema(p):
                 try:
                     kl = await self.client.get_historical_klines(p, AsyncClient.KLINE_INTERVAL_15MINUTE, "6 days ago UTC")
+                    if len(kl) > 1: kl = kl[:-1]
                     cl = pd.Series([float(k[4]) for k in kl])
                     if len(cl) >= 200:
                         ef = ta.ema(cl, length=self.config['EMA_FAST']).iloc[-1]
@@ -354,20 +357,37 @@ class TradingBot:
                             cached_positions = data['active_positions']
                             if 'last_trade_time' in data:
                                 self.last_trade_time = data['last_trade_time']
+                            if 'pair_last_loss' in data:
+                                self._pair_last_loss = data['pair_last_loss']
                         else:
                             cached_positions = data
                 except Exception as e:
                     print(f"Error reading active_positions.json: {e}")
             
-            conn = sqlite3.connect('trading_bot.db')
-            query = 'SELECT pair, side, price, quantity FROM trades WHERE id IN (SELECT MAX(id) FROM trades GROUP BY pair)'
-            df = pd.read_sql_query(query, conn)
+            def read_db():
+                conn = sqlite3.connect('trading_bot.db')
+                query = 'SELECT pair, side, price, quantity, timestamp FROM trades WHERE id IN (SELECT MAX(id) FROM trades GROUP BY pair)'
+                df = pd.read_sql_query(query, conn)
+                conn.close()
+                return df
+                
+            df = await asyncio.to_thread(read_db)
             for _, row in df.iterrows():
                 pair = row['pair']
                 asset = pair.replace('USDT', '')
                 if row['side'] == 'BUY' and balances.get(asset, 0) > 0:
                     # Sync with actual quantity from Binance
                     actual_qty = balances.get(asset, 0)
+                    
+                    fallback_time = time.time()
+                    try:
+                        if 'timestamp' in row and pd.notna(row['timestamp']):
+                            dt = pd.to_datetime(row['timestamp'])
+                            if dt.tzinfo is None:
+                                dt = dt.tz_localize('UTC')
+                            fallback_time = dt.timestamp()
+                    except:
+                        pass
                     
                     if pair in cached_positions:
                         cache = cached_positions[pair]
@@ -377,7 +397,7 @@ class TradingBot:
                             'qty': actual_qty,
                             'max_p': cache.get('max_p', row['price']),
                             'sl': cache.get('sl', row['price'] * 0.98),
-                            'time': cache.get('time', time.time()),
+                            'time': cache.get('time', fallback_time),
                             'setup': cache.get('setup'),
                             'entry_atr': cache.get('entry_atr')
                         }
@@ -385,10 +405,9 @@ class TradingBot:
                     else:
                         self.positions[pair] = {
                             'entries': 1, 'entry_price': row['price'], 'qty': actual_qty,
-                            'max_p': row['price'], 'sl': row['price'] * 0.98, 'time': time.time()
+                            'max_p': row['price'], 'sl': row['price'] * 0.98, 'time': fallback_time
                         }
                         print(f"Synced {pair} from DB (no cache). Fallback Entry: {row['price']}, Qty: {actual_qty}")
-            conn.close()
             self.save_active_positions()
         except Exception as e:
             print(f"Sync error: {e}")
@@ -448,7 +467,7 @@ class TradingBot:
                     
                     profit_pct = (cp - pos['entry_price']) / pos['entry_price']
                     
-                    # V100 ProfitGuard (Parameterized Trailing)
+                    # V106 ProfitGuard (Parameterized Trailing)
                     # Minimum hold period: don't tighten stops in first 6 hours
                     trail_trigger = self.config.get('TRAILING_TRIGGER', 0.040)
                     trail_dist = self.config.get('TRAILING_DIST', 0.020)
@@ -471,18 +490,20 @@ class TradingBot:
                             self.save_active_positions()
                             self.last_positions_save = time.time()
 
+                    take_profit = self.config.get('TAKE_PROFIT', 0.0)
+                    if take_profit > 0 and profit_pct >= take_profit:
+                        print(f"💰 TAKE PROFIT: {pair} reached TP target")
+                        await self.execute_trade(pair, 'SELL')
+                        continue
+
                     if sl > 0 and cp <= sl:
                         await self.execute_trade(pair, 'SELL')
                         continue
-                    
-                    # Time-based exit: close trades held >48 hours
-                    if pos.get('time') and (time.time() - pos['time']) > 48 * 3600:
-                        print(f"⏰ TIME EXIT: {pair} held for >48h, closing position")
-                        await self.execute_trade(pair, 'SELL')
-                        continue
                 if k['x']:
-                    new_row = pd.DataFrame({'timestamp':[pd.to_datetime(k['t'], unit='ms')],'open':[float(k['o'])],'high':[float(k['h'])],'low':[float(k['l'])],'close':[float(k['c'])],'volume':[float(k['v'])]})
-                    self.data_1m[pair] = pd.concat([self.data_1m[pair], new_row], ignore_index=True).iloc[-300:]
+                    def update_data(df, t, o, h, l, c_val, v):
+                        new_row = pd.DataFrame({'timestamp':[pd.to_datetime(t, unit='ms')],'open':[float(o)],'high':[float(h)],'low':[float(l)],'close':[float(c_val)],'volume':[float(v)]})
+                        return pd.concat([df, new_row], ignore_index=True).iloc[-300:]
+                    self.data_1m[pair] = await asyncio.to_thread(update_data, self.data_1m[pair], k['t'], k['o'], k['h'], k['l'], k['c'], k['v'])
                     await self.analyze(pair)
 
     async def check_portfolio_guard(self):
@@ -502,6 +523,10 @@ class TradingBot:
             total_unrealized_usd += (current_p - pos['entry_price']) * pos['qty']
             current_equity += current_p * pos['qty']
             
+            if pos.get('time') and (time.time() - pos['time']) > 12 * 3600:
+                print(f"⏰ TIME EXIT: {p} held for >12h, closing position from central loop")
+                await self.execute_trade(p, 'SELL')
+            
         pnl_pct = (total_unrealized_usd / current_equity) * 100 if current_equity > 0 else 0
         reason = None
         if pnl_pct <= self.config.get('PORTFOLIO_EJECT', -5.0): reason = "GLOBAL_EJECT"
@@ -516,47 +541,52 @@ class TradingBot:
         if pair in self.restricted_pairs or pair not in self.data_1m: return
         df = self.data_1m[pair]
         if len(df) < 250: return
-        c, h, l = df['close'], df['high'], df['low']
-        cp = c.iloc[-1]
-        atr = ta.atr(h, l, c).iloc[-1]
+        def calc_indicators(data):
+            c, h, l, v = data['close'], data['high'], data['low'], data['volume']
+            cp = c.iloc[-1]
+            vol = v.iloc[-1]
+            atr = ta.atr(h, l, c).iloc[-1]
+            sma200_series = ta.sma(c, length=200)
+            sma200 = sma200_series.iloc[-1] if sma200_series is not None and len(sma200_series) >= 200 else cp
+            rsi_series = ta.rsi(c, length=14)
+            rsi = rsi_series.iloc[-1]
+            rsi_prev = rsi_series.iloc[-2] if len(rsi_series) > 1 else 50.0
+            
+            macd_data = ta.macd(c)
+            macd = macd_data['MACD_12_26_9'].iloc[-1] if macd_data is not None and len(macd_data) >= 1 else 0.0
+            hist_curr = macd_data['MACDh_12_26_9'].iloc[-1] if macd_data is not None and len(macd_data) >= 2 else 0.0
+            hist_prev = macd_data['MACDh_12_26_9'].iloc[-2] if macd_data is not None and len(macd_data) >= 2 else 0.0
+            
+            adx_data = ta.adx(h, l, c)
+            adx = adx_data['ADX_14'].iloc[-1] if adx_data is not None and len(adx_data) >= 1 else 0.0
+            
+            vol_sma_window = self.config.get('VOLUME_SMA_WINDOW', 20)
+            vol_sma_series = v.rolling(window=vol_sma_window).mean()
+            vol_sma = vol_sma_series.iloc[-1] if not vol_sma_series.empty else vol
+            
+            return cp, atr, sma200, rsi, rsi_prev, hist_curr, hist_prev, macd, adx, vol, vol_sma
 
-        sma200_series = ta.sma(c, length=200)
-        sma200 = sma200_series.iloc[-1] if sma200_series is not None and len(sma200_series) >= 200 else cp
+        try:
+            cp, atr, sma200, rsi, _, hist_curr, hist_prev, macd, adx, vol, vol_sma = await asyncio.to_thread(calc_indicators, df)
+        except Exception as e:
+            print(f"Indicator calculation error {pair}: {e}")
+            return
 
         pos = self.positions.get(pair, {'entries': 0})
-        rsi_series = ta.rsi(c, length=14)
-        rsi = rsi_series.iloc[-1]
 
-        # Strategy V100 Multi-Setup Momentum ("Session Sniper")
+        # Strategy V114 MACD Momentum
         if pos['entries'] == 0:
-            # Adaptive cooldown: longer after losses, normal after wins
             base_cooldown = self.config.get('COOLDOWN_PERIOD', 600)
-            last_trade_was_loss = getattr(self, '_last_trade_was_loss', False)
-            cooldown = base_cooldown if not last_trade_was_loss else 4 * 3600  # 4h after a loss
+            pair_had_loss = self._pair_last_loss.get(pair, False)
+            cooldown = base_cooldown if not pair_had_loss else 4 * 3600
             if (time.time() - self.last_trade_time.get(pair, 0)) < cooldown: return
             active_count = len([p for p in self.positions if self.positions[p]['entries'] > 0])
             
-            # Hard cap on concurrent positions to prevent over-exposure
-            max_concurrent = self.config.get('MAX_PAIRS', 40) // 4  # Max 10 simultaneous positions
+            max_concurrent = self.config.get('MAX_PAIRS', 40) // 4
             if active_count >= max_concurrent: return
-            
-            # Session Sniper: Only enter during statistically profitable time windows
-            from datetime import datetime, timezone
-            now_utc = datetime.now(timezone.utc)
-            entry_hour = now_utc.hour
-            entry_dow = now_utc.weekday()  # 0=Mon, 6=Sun
-            
-            # Only enter at 14-16 UTC (US open) and 21 UTC (Asian overlap)
-            allowed_hours = {14, 15, 16, 21}
-            if entry_hour not in allowed_hours: return
-            
-            # Avoid Mon(0), Tue(1), Wed(2) — prefer Thu(3), Fri(4), Sat(5), Sun(6)
-            blocked_days = {0, 1, 2}
-            if entry_dow in blocked_days: return
             
             setup = None
             
-            # Check 15m trend alignment
             ema_data = self.ema_cache.get(pair)
             pair_uptrend_15m = True
             if ema_data:
@@ -564,29 +594,8 @@ class TradingBot:
             
             if self.market_trend.get('btc_uptrend') and self.market_trend.get('btc_uptrend_15m') and pair_uptrend_15m:
                 if cp > sma200:
-                    rsi_val = rsi
-                    rsi_prev = rsi_series.iloc[-2] if len(rsi_series) > 1 else 50.0
-                    
-                    # Setup 1: RSI Pullback (RSI crosses above 30 from below)
-                    if rsi_val > 30 and rsi_prev <= 30:
-                        setup = "V100_Pullback"
-                    
-                    # Setup 2: MACD Histogram Reversal (histogram turns positive from negative)
-                    if not setup:
-                        macd_data = ta.macd(c)
-                        if macd_data is not None and len(macd_data) >= 2:
-                            hist_curr = macd_data['MACDh_12_26_9'].iloc[-1]
-                            hist_prev = macd_data['MACDh_12_26_9'].iloc[-2]
-                            if hist_curr > 0 and hist_prev <= 0 and rsi_val < 60:
-                                setup = "V100_MACD_Rev"
-                    
-                    # Setup 3: Bollinger Band Lower Bounce (price at lower band + RSI < 40)
-                    if not setup:
-                        bb = ta.bbands(c, length=20, std=2.0)
-                        if bb is not None and len(bb) >= 1:
-                            bb_lower = bb.iloc[-1, 0]  # BBL
-                            if cp <= bb_lower * 1.01 and rsi_val < 40:
-                                setup = "V100_BB_Bounce"
+                    if hist_curr > 0 and hist_prev <= 0 and macd > 0 and adx > 25 and rsi > 40 and rsi < 70 and vol > vol_sma * 2.0:
+                        setup = "V114_MACD_Mom"
                         
             if setup:
                 volatility = atr / cp
@@ -608,7 +617,7 @@ class TradingBot:
     async def execute_trade(self, pair, side, strength=1.0, entry_atr=None, setup_name=None):
         async with self.trade_lock:
             try:
-                if pair in self.restricted_pairs: return False
+                if side == 'BUY' and pair in self.restricted_pairs: return False
                 if pair not in self.exchange_info: await self.fetch_exchange_info()
                 
                 # Guard against double-sell: re-check position state under lock
@@ -681,12 +690,13 @@ class TradingBot:
                             fill_price = float(f.get('price', ep))
                             total_fee_usdt += comm * fill_price
                 
-                log_trade(pair, side, ep, eq, fee=total_fee_usdt, fee_asset='USDT')
-                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V100', 'entry_atr': entry_atr}
+                config_snapshot = json.dumps(self.config)
+                await asyncio.to_thread(log_trade, pair, side, ep, eq, total_fee_usdt, 'USDT', config_snapshot)
+                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V114', 'entry_atr': entry_atr}
                 else:
-                    # Track if this was a winning or losing trade for adaptive cooldown
+                    # Track if this was a winning or losing trade for adaptive cooldown (per-pair)
                     entry_price = self.positions[pair].get('entry_price', ep)
-                    self._last_trade_was_loss = (ep < entry_price)
+                    self._pair_last_loss[pair] = (ep < entry_price)
                     self.positions[pair] = {'entries': 0, 'qty': 0.0}
                 self.save_active_positions()
                 
@@ -711,7 +721,7 @@ class TradingBot:
                     self.restricted_pairs.add(pair)
                     self.save_restricted_pairs()
                     if pair in self.tracked_pairs: self.tracked_pairs.remove(pair)
-                log_failed_trade(pair, err)
+                await asyncio.to_thread(log_failed_trade, pair, err)
                 return False
 
     def format_quantity(self, pair, q):

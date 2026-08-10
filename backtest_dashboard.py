@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from rich.table import Table
 from rich.panel import Panel
 from rich.live import Live
@@ -104,16 +104,9 @@ def generate_dashboard():
     relative_last_run = format_relative_time(last_run_str)
     relative_run_started = format_relative_time(run_started_str)
 
-    # Calculate next run relative time (midnight UTC)
-    now = datetime.now()
-    next_run = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    time_until_next = next_run - now
-    total_seconds_until = int(time_until_next.total_seconds())
-    hours_until = total_seconds_until // 3600
-    minutes_until = (total_seconds_until % 3600) // 60
-    
-    next_run_str = next_run.strftime('%Y-%m-%d %H:%M:%S')
-    relative_next_run = f"in {hours_until}h {minutes_until}m"
+    # With continuous optimization, there is no next run time.
+    next_run_str = "Continuous Loop"
+    relative_next_run = "Running 24/7"
 
     # Header Panel
     eta_text = f" | ETA: [bold yellow]{status.get('eta', 'N/A')}[/bold yellow]" if status['status'] != "Idle" else ""
@@ -126,7 +119,7 @@ def generate_dashboard():
     else:
         time_text = f"Last Run: {last_run_str}{relative_last_run}"
         
-    header_text = f"Status: [bold {'green' if status['status'] == 'Idle' else 'cyan'}]{status['status']}[/bold {'green' if status['status'] == 'Idle' else 'cyan'}] | {time_text} | Next Run: {next_run_str} ({relative_next_run}){eta_text}"
+    header_text = f"Status: [bold {'green' if status['status'] == 'Idle' else 'cyan'}]{status['status']}[/bold {'green' if status['status'] == 'Idle' else 'cyan'}] | {time_text} | Execution Mode: {next_run_str} ({relative_next_run}){eta_text}"
     header = Panel(header_text, title="Optimizer Status", style="bold white")
 
     # Progress Bar

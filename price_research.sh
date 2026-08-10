@@ -70,28 +70,29 @@ async def analyze():
     symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LINKUSDT', 'NEARUSDT']
     market_summary = {}
     
-    for sym in symbols:
-        klines = await client.get_historical_klines(sym, AsyncClient.KLINE_INTERVAL_1HOUR, "30 days ago UTC")
-        df = pd.DataFrame(klines, columns=['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i'])
-        df['close'] = df['c'].astype(float)
-        df['high'] = df['h'].astype(float)
-        df['low'] = df['l'].astype(float)
-        df['volume'] = df['v'].astype(float)
-        
-        # Compute market characteristics
-        returns = df['close'].pct_change()
-        bb = ta.bbands(df['close'], length=20, std=2.0)
-        atr = ta.atr(df['high'], df['low'], df['close'], length=14)
-        
-        market_summary[sym] = {
-            'avg_daily_range_pct': float((atr / df['close']).mean() * 100 * 24),
-            'trend_30d_pct': float((df['close'].iloc[-1] / df['close'].iloc[0] - 1) * 100),
-            'volatility_hourly': float(returns.std() * 100),
-            'bb_squeeze_count': int(((bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0'] < 0.03).sum()),
-            'avg_volume_usd': float((df['close'] * df['volume']).mean()),
-        }
-    
-    await client.close_connection()
+    try:
+        for sym in symbols:
+            klines = await client.get_historical_klines(sym, AsyncClient.KLINE_INTERVAL_1HOUR, "30 days ago UTC")
+            df = pd.DataFrame(klines, columns=['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i'])
+            df['close'] = df['c'].astype(float)
+            df['high'] = df['h'].astype(float)
+            df['low'] = df['l'].astype(float)
+            df['volume'] = df['v'].astype(float)
+            
+            # Compute market characteristics
+            returns = df['close'].pct_change()
+            bb = ta.bbands(df['close'], length=20, std=2.0)
+            atr = ta.atr(df['high'], df['low'], df['close'], length=14)
+            
+            market_summary[sym] = {
+                'avg_daily_range_pct': float((atr / df['close']).mean() * 100 * 24),
+                'trend_30d_pct': float((df['close'].iloc[-1] / df['close'].iloc[0] - 1) * 100),
+                'volatility_hourly': float(returns.std() * 100),
+                'bb_squeeze_count': int(((bb['BBU_20_2.0_2.0'] - bb['BBL_20_2.0_2.0']) / bb['BBM_20_2.0_2.0'] < 0.03).sum()),
+                'avg_volume_usd': float((df['close'] * df['volume']).mean()),
+            }
+    finally:
+        await client.close_connection()
     print(json.dumps(market_summary, indent=2))
 
 asyncio.run(analyze())
@@ -101,6 +102,12 @@ PYEOF
 CURRENT_CONFIG=$(cat /root/config.json)
 CURRENT_BOT=$(cat /root/bot.py)
 CURRENT_BT=$(cat /root/portfolio_backtester.py)
+
+PREVIOUS_RESEARCH="No previous research found."
+if [ -f "/root/price_research.html" ]; then
+    PREVIOUS_RESEARCH=$(cat /root/price_research.html)
+fi
+RESEARCH_NOTES=$(cat /root/research_notes.md 2>/dev/null || echo "No previous research notes.")
 
 PROMPT=$(cat <<'PROMPT_END'
 You are a quantitative trading strategy researcher. Your job is to analyze raw price data characteristics and propose NEW entry signals that could outperform the current strategy.
@@ -118,6 +125,12 @@ PROMPT="$PROMPT
 MARKET CHARACTERISTICS (last 30 days):
 $PRICE_SUMMARY
 
+PREVIOUS RESEARCH FINDINGS (Read this to avoid repeating recently failed experiments):
+$PREVIOUS_RESEARCH
+
+PREVIOUS LEARNINGS / REJECTED IDEAS FROM OTHER AGENTS:
+$RESEARCH_NOTES
+
 CURRENT BOT CODE: /root/bot.py
 CURRENT BACKTESTER CODE: /root/portfolio_backtester.py
 CURRENT CONFIG: $CURRENT_CONFIG
@@ -133,6 +146,7 @@ YOUR TASK:
    - Be aligned between bot and backtester
 5. Write a research report to /root/price_research.html explaining your proposed signals, the market logic, and what you implemented.
 6. IMPORTANT: Be conservative. One solid additional signal is better than three weak ones. If nothing clearly beats the current setup, write the report explaining why and make NO code changes.
+7. RESEARCH LEDGER: If you test an idea and reject it, or learn something new that does NOT result in a code change, you MUST write a brief 1-sentence note to /root/research_notes.md (append to the file). This prevents you from repeating the exact same failed experiments. However, if market conditions have changed significantly, or you are testing a meaningful variation of a past idea, you MAY retry it.
 
 OUTPUT: Research report to /root/price_research.html. Code changes only if you're confident they improve the strategy."
 
@@ -150,7 +164,23 @@ if agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-ti
 
     if [ "$FILES_CHANGED" = true ]; then
         echo "Code changes detected. Running verification..."
-        if /root/venv/bin/python /root/verify_system.py; then
+        
+        # Retry loop: give agy up to 3 attempts to fix errors
+        VERIFY_PASSED=false
+        for ATTEMPT in 1 2 3; do
+            if /root/venv/bin/python /root/verify_system.py 2>&1; then
+                VERIFY_PASSED=true
+                break
+            else
+                echo "Verification FAILED (attempt $ATTEMPT/3)."
+                if [ $ATTEMPT -lt 3 ]; then
+                    ERRORS=$(/root/venv/bin/python /root/verify_system.py 2>&1 | grep -E "FAIL|Error" | head -10)
+                    agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 5m0s --print "Fix these verification errors in the code: $ERRORS" 2>/dev/null || break
+                fi
+            fi
+        done
+        
+        if [ "$VERIFY_PASSED" = true ]; then
             echo "Verification passed. Running backtest gate..."
 
             BACKTEST_RESULT=$(/root/venv/bin/python -c "
@@ -194,8 +224,8 @@ print('yes' if result > -1.0 and result > baseline + 1.0 else 'no')
                 perform_rollback
             fi
         else
-            echo "Verification FAILED. Rolling back..."
-            echo "[$(date)] Price research REJECTED by verification." >> /root/strategy_evolver.log
+            echo "Verification FAILED after 3 attempts. Rolling back..."
+            echo "[$(date)] Price research REJECTED by verification." >> /root/price_research.log
             perform_rollback
         fi
     else

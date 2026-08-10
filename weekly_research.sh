@@ -100,6 +100,7 @@ PYEOF
 DB_STATS=$(cat /root/db_stats_summary.txt 2>/dev/null)
 CURRENT_CONFIG=$(cat /root/config.json)
 BOT_CODE=$(cat /root/bot.py)
+RESEARCH_NOTES=$(cat /root/research_notes.md 2>/dev/null || echo "No previous research notes.")
 
 PROMPT=$(cat <<'PROMPT_END'
 You are a quantitative trading researcher. Your job is to analyze the statistical patterns in a live Binance spot trading bot's historical trade data and propose concrete, data-driven improvements.
@@ -117,6 +118,9 @@ $CURRENT_CONFIG
 LONG-TERM TRADE STATS:
 $DB_STATS
 
+PREVIOUS LEARNINGS / REJECTED IDEAS:
+$RESEARCH_NOTES
+
 CURRENT BOT CODE: /root/bot.py
 CURRENT BACKTESTER CODE: /root/portfolio_backtester.py
 
@@ -127,6 +131,7 @@ YOUR TASK:
 4. Write a research report to /root/weekly_research.html explaining your findings, the statistical significance, and what you changed.
 5. IMPORTANT: Only make changes that are supported by at least 50 historical trades showing positive expectancy. Do not overfit to small samples.
 6. Keep bot.py and portfolio_backtester.py logic perfectly aligned.
+7. RESEARCH LEDGER: If you test an idea and reject it, or learn something new that does NOT result in a code change, you MUST write a brief 1-sentence note to /root/research_notes.md (append to the file). This prevents you from repeating the exact same failed experiments. However, if market conditions have changed significantly, or you are testing a meaningful variation of a past idea, you MAY retry it.
 
 OUTPUT: Write findings to /root/weekly_research.html as clean HTML. If you modify code, explain why with data backing."
 
@@ -168,7 +173,23 @@ if agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-ti
 
     if [ "$FILES_CHANGED" = true ]; then
         echo "Code changes detected. Running verification..."
-        if /root/venv/bin/python /root/verify_system.py; then
+        
+        # Retry loop: give agy up to 3 attempts to fix errors
+        VERIFY_PASSED=false
+        for ATTEMPT in 1 2 3; do
+            if /root/venv/bin/python /root/verify_system.py 2>&1; then
+                VERIFY_PASSED=true
+                break
+            else
+                echo "Verification FAILED (attempt $ATTEMPT/3)."
+                if [ $ATTEMPT -lt 3 ]; then
+                    ERRORS=$(/root/venv/bin/python /root/verify_system.py 2>&1 | grep -E "FAIL|Error" | head -10)
+                    agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 5m0s --print "Fix these verification errors in the code: $ERRORS" 2>/dev/null || break
+                fi
+            fi
+        done
+        
+        if [ "$VERIFY_PASSED" = true ]; then
             echo "Verification passed. Running backtest gate..."
 
             BACKTEST_RESULT=$(/root/venv/bin/python -c "
@@ -208,8 +229,8 @@ asyncio.run(quick_test())
                 perform_rollback
             fi
         else
-            echo "Verification FAILED. Rolling back..."
-            echo "[$(date)] Weekly research REJECTED by verification." >> /root/strategy_evolver.log
+            echo "Verification FAILED after 3 attempts. Rolling back..."
+            echo "[$(date)] Weekly research REJECTED by verification." >> /root/weekly_research.log
             perform_rollback
         fi
     else

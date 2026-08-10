@@ -33,6 +33,7 @@ HEALTH_REPORT=$(/root/venv/bin/python /root/system_health.py)
 BOT_LOGS=$(journalctl -u trading-bot.service -n 50 --no-pager)
 CURRENT_CONFIG=$(cat /root/config.json)
 RECENT_BACKTEST=$(/root/venv/bin/python /root/run_quick_validation.py)
+RESEARCH_NOTES=$(cat /root/research_notes.md 2>/dev/null || echo "No previous research notes.")
 
 # 2. Invoke Antigravity CLI to analyze and generate strategic recommendations
 PROMPT=$(cat <<EOF
@@ -47,6 +48,8 @@ $DB_STATS
 - Performance Data: /root/daily_report.json
 - Current Optimal Tuner Config: $CURRENT_CONFIG
 - Recent 5-Day Backtest Stats: $RECENT_BACKTEST
+- Previous Learnings / Rejected Ideas:
+$RESEARCH_NOTES
 - Bot Code: /root/bot.py
 - Backtester Code: /root/portfolio_backtester.py
 
@@ -64,6 +67,7 @@ INSTRUCTIONS:
 3. Output your daily opinion or change summary to /root/daily_opinion.html as a clean, self-contained HTML block (with inline styling) suitable for embedding inside an email card. Do not include any markdown backticks (such as triple-backtick formatting) in the file—write ONLY raw HTML content.
 4. **Code Alignment & Logic Audit**: Always check for discrepancies or logic misalignments between the backtester (/root/portfolio_backtester.py) and the live bot (/root/bot.py) (e.g. exit conditions, indicators, or rules present in one but missing/behaving differently in the other). If you detect any discrepancy, prioritize fixing it immediately as a 'Critical Fix' to keep the backtest engine and live bot 100% aligned.
 5. **State Persistence & Daemon Robustness Audit**: Regularly audit the live bot's startup initialization, shutdown, and config reloading routines. Ensure that any runtime state (such as trailing stop-losses, position details, or indicators) is fully preserved across service restarts and config reloads, preventing state loss or structural discrepancies between live trading and the historical backtest engine.
+6. **Research Ledger**: If you test an idea and reject it, or learn something new that does NOT result in a code change, you MUST write a brief 1-sentence note to /root/research_notes.md (append to the file). This prevents you from repeating the exact same failed experiments. However, if market conditions have changed significantly, or you are testing a meaningful variation of a past idea, you MAY retry it.
 EOF
 )
 
@@ -106,7 +110,35 @@ fi
 if [ "$EVOLUTION_SUCCESS" = true ]; then
     if [ "$FILES_CHANGED" = true ]; then
         echo "Changes detected in workspace. Verifying system health..."
-        if /root/venv/bin/python /root/verify_system.py; then
+        
+        # Retry loop: give agy up to 3 attempts to fix verification errors
+        VERIFY_PASSED=false
+        for ATTEMPT in 1 2 3; do
+            VERIFY_OUTPUT=$(/root/venv/bin/python /root/verify_system.py 2>&1)
+            VERIFY_EXIT=$?
+            
+            if [ $VERIFY_EXIT -eq 0 ]; then
+                VERIFY_PASSED=true
+                echo "Verification passed on attempt $ATTEMPT."
+                break
+            else
+                echo "Verification FAILED (attempt $ATTEMPT/3). Errors:"
+                echo "$VERIFY_OUTPUT" | grep -E "FAIL|Error|error" | head -30
+                
+                if [ $ATTEMPT -lt 3 ]; then
+                    echo "Asking AI to fix the errors..."
+                    FIX_PROMPT="The code you just wrote failed verification. Fix these errors and try again. Do NOT explain, just fix the files:
+
+$VERIFY_OUTPUT"
+                    if ! agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 5m0s --print "$FIX_PROMPT"; then
+                        echo "AI fix attempt failed. Giving up."
+                        break
+                    fi
+                fi
+            fi
+        done
+        
+        if [ "$VERIFY_PASSED" = true ]; then
             echo "Syntax verification passed. Running quick backtest validation..."
             
             # GUARDRAIL: Run a quick backtest to ensure new code is profitable
@@ -161,7 +193,7 @@ result = asyncio.run(quick_test())
                 EVOLUTION_SUCCESS=false
             fi
         else
-            echo "CRITICAL: System verification failed after AI execution! Rolling back changes..."
+            echo "CRITICAL: Verification failed after 3 attempts. Rolling back changes..."
             perform_rollback
             EVOLUTION_SUCCESS=false
         fi
@@ -177,19 +209,3 @@ fi
 # Run system cleanup script to remove obsolete scratch/test files
 echo "Running system cleanup..."
 /root/venv/bin/python /root/cleanup_system.py
-
-# Check if we should skip sending the email report
-SKIP_EMAIL=false
-for arg in "$@"; do
-    if [ "$arg" == "--skip-email" ]; then
-        SKIP_EMAIL=true
-    fi
-done
-
-if [ "$SKIP_EMAIL" = false ]; then
-    # Always send the daily report at the end
-    echo "Sending daily report..."
-    /root/venv/bin/python /root/send_daily_report.py >> /root/email_report.log 2>&1
-else
-    echo "Skipping email report (--skip-email flag detected)."
-fi

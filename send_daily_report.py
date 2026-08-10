@@ -815,8 +815,8 @@ def get_recent_ai_manager_actions():
             blacklist_str = ", ".join(act['blacklist']) if act['blacklist'] else "None"
             changes = []
             if act['risk_mult'] != 1.0: changes.append(f"Risk Mult: <b>{act['risk_mult']}x</b>")
-            if act['sl_offset'] != 0.0: changes.append(f"SL Offset: <b>+{act['sl_offset']}</b>")
-            if act['vol_offset'] != 0.0: changes.append(f"Vol Offset: <b>+{act['vol_offset']}</b>")
+            if act['sl_offset'] != 0.0: changes.append(f"SL Offset: <b>{act['sl_offset']:+}</b>")
+            if act['vol_offset'] != 0.0: changes.append(f"Vol Offset: <b>{act['vol_offset']:+}</b>")
             if act['eject_offset'] != 0.0: changes.append(f"Eject Offset: <b>{act['eject_offset']}</b>")
             if act['blacklist']: changes.append(f"Blacklisted: <span style='color:#dc3545;'><b>{blacklist_str}</b></span>")
             

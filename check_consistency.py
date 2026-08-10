@@ -50,9 +50,10 @@ def check_consistency():
         if bot_hours != bt_hours:
             issues.append(f"Allowed hours mismatch - Bot: {bot_hours}, BT: {bt_hours}")
         else:
-            print(f"  [PASS] Time-of-day filter aligned")
+            print("  [PASS] Time-of-day filter aligned")
     elif bool(bot_hours) != bool(bt_hours):
-        issues.append(f"Time filter exists in {'bot' if bot_hours else 'backtester'} but not the other")
+        which = 'bot' if bot_hours else 'backtester'
+        issues.append(f"Time filter exists in {which} but not the other")
     
     bot_days = re.findall(r'blocked_days\s*=\s*\{([^}]+)\}', bot)
     bt_days = re.findall(r'blocked_days\s*=\s*\{([^}]+)\}', bt)
@@ -60,7 +61,7 @@ def check_consistency():
         if bot_days != bt_days:
             issues.append(f"Blocked days mismatch - Bot: {bot_days}, BT: {bt_days}")
         else:
-            print(f"  [PASS] Day-of-week filter aligned")
+            print("  [PASS] Day-of-week filter aligned")
     
     # 4. Trailing stop params - check both use the same config keys
     bot_trail_keys = set(re.findall(r"(?:params|self\.config)\.get\('(TRAILING_\w+|BE_\w+)'", bot))
@@ -72,15 +73,13 @@ def check_consistency():
             print(f"  [PASS] Trailing stop params aligned: {bot_trail_keys}")
     
     # 5. Time-based exit alignment
-    bot_time_exit = re.findall(r'(\d+)\s*\*\s*3600', bot)
-    bt_time_exit = re.findall(r'>\s*(\d+).*?(?:time|48h)', bt, re.IGNORECASE)
     bot_has_time_exit = '48 * 3600' in bot or 'TIME EXIT' in bot
     bt_has_time_exit = '2880' in bt or 'TimeExit' in bt
     if bot_has_time_exit != bt_has_time_exit:
         issues.append(f"Time exit mismatch - Bot has: {bot_has_time_exit}, BT has: {bt_has_time_exit}")
     else:
         if bot_has_time_exit:
-            print(f"  [PASS] Time-based exit present in both")
+            print("  [PASS] Time-based exit present in both")
     
     # 6. Min hold alignment
     bot_min_hold = '6 * 3600' in bot or 'min_hold' in bot
@@ -89,7 +88,7 @@ def check_consistency():
         issues.append(f"Min hold mismatch - Bot has: {bot_min_hold}, BT has: {bt_min_hold}")
     else:
         if bot_min_hold:
-            print(f"  [PASS] Minimum hold period in both")
+            print("  [PASS] Minimum hold period in both")
     
     # 7. Config keys used by bot vs what tuner optimizes
     if os.path.exists('tuner.py'):
@@ -102,7 +101,7 @@ def check_consistency():
         if tuner_not_used:
             issues.append(f"Tuner optimizes params not used by bot: {tuner_not_used}")
         else:
-            print(f"  [PASS] All tuner params are used by bot or backtester")
+            print("  [PASS] All tuner params are used by bot or backtester")
     
     # 8. Config.json keys vs bot usage
     if os.path.exists('config.json'):
@@ -122,7 +121,7 @@ def check_consistency():
     bot_has_guard = 'PORTFOLIO_EJECT' in bot and 'PORTFOLIO_HARVEST' in bot
     bt_has_guard = 'PORTFOLIO_EJECT' in bt and 'PORTFOLIO_HARVEST' in bt
     if bot_has_guard and bt_has_guard:
-        print(f"  [PASS] Portfolio guard (eject/harvest) in both")
+        print("  [PASS] Portfolio guard (eject/harvest) in both")
     elif bot_has_guard != bt_has_guard:
         issues.append("Portfolio guard exists in one but not the other")
     
@@ -144,7 +143,7 @@ def check_consistency():
             print(f"    {i}. {issue}")
         return False
     else:
-        print(f"\n  [PASS] All consistency checks passed!")
+        print("\n  [PASS] All consistency checks passed!")
         return True
 
 if __name__ == "__main__":

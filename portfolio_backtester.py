@@ -185,9 +185,9 @@ class PortfolioBacktester:
             # SMA 200 instead of VWAP for streaming-safe logic
             sma200_series = ta.sma(df_1m['close'], length=200)
             if sma200_series is not None:
-                indicators['vwap'] = pd.Series(sma200_series.values).fillna(0.0)
+                indicators['sma200'] = pd.Series(sma200_series.values).fillna(0.0)
             else:
-                indicators['vwap'] = pd.Series([0.0]*len(df_1m))
+                indicators['sma200'] = pd.Series([0.0]*len(df_1m))
 
             # Volume SMA
             vol_sma_window = search_space.get('VOLUME_SMA_WINDOW', 20)
@@ -206,7 +206,7 @@ class PortfolioBacktester:
             if ema_f is not None and ema_s is not None:
                 df_15m['ema_fast'] = ema_f
                 df_15m['ema_slow'] = ema_s
-                df_15m['ema_slow_prev'] = ema_s.shift(5)
+                df_15m['ema_slow_prev'] = ema_s.shift(4)
                 df_15m['slope'] = (ema_s - df_15m['ema_slow_prev']) / df_15m['ema_slow_prev']
                 df_15m['uptrend'] = (ema_f > ema_s) & (df_15m['slope'] > 0)
             else:
@@ -230,7 +230,7 @@ class PortfolioBacktester:
     def run(self, params):
         balance = 1000.0
         initial_balance = balance
-        active_positions = {s: {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': -99999} for s in self.pair_data.keys()}
+        active_positions = {s: {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': -99999, 'last_loss': False} for s in self.pair_data.keys()}
         trades = []
         slippage_pct = params.get('SLIPPAGE_PCT', 0.0007)
         
@@ -262,7 +262,7 @@ class PortfolioBacktester:
                 'macd': ind['macd'].values,
                 'macdh': ind['macdh'].values,
                 'bb_lower': ind['bb_lower'].values,
-                'vwap': ind['vwap'].values,
+                'sma200': ind['sma200'].values,
                 'vol_sma': ind['vol_sma'].values,
                 'btc_rsi': ind['btc_safe']['rsi'].values,
                 'btc_uptrend': ind['btc_safe']['uptrend'].values,
@@ -313,7 +313,7 @@ class PortfolioBacktester:
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100
                         trades.append({'pair': s, 'pnl': pnl, 'reason': global_exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown')})
                         balance += pos['qty'] * exit_price * 0.999
-                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx}
+                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0}
                 continue
 
             # 3. Individual Trade Analysis
@@ -325,7 +325,7 @@ class PortfolioBacktester:
                 s_data = np_data[s]
                 price = s_data['close'][idx]
                 atr = s_data['atr'][idx]
-                vwap = s_data['vwap'][idx]
+                sma200 = s_data['sma200'][idx]
                 rsi = s_data['rsi'][idx]
                 
                 btc_uptrend = s_data['btc_uptrend'][idx]
@@ -351,9 +351,13 @@ class PortfolioBacktester:
                         pos['sl'] = max(pos['sl'], entry * (1.0 + be_lock))
 
                     exit_reason = None
-                    if price <= pos['sl']:
+                    take_profit = params.get('TAKE_PROFIT', 0.0)
+                    
+                    if take_profit > 0 and profit_pct >= take_profit:
+                        exit_reason = "TakeProfit"
+                    elif price <= pos['sl']:
                         exit_reason = "SL"
-                    elif (idx - pos['time']) > 2880:  # 48h time-based exit
+                    elif (idx - pos['time']) > 720:  # 12h time-based exit
                         exit_reason = "TimeExit"
 
                     if exit_reason:
@@ -361,23 +365,27 @@ class PortfolioBacktester:
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100
                         trades.append({'pair': s, 'pnl': pnl, 'reason': exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown')})
                         balance += pos['qty'] * exit_price * 0.999
-                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx}
+                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0}
 
                 else:
                     # Check trade cooldown period
                     cooldown_min = params.get('COOLDOWN_PERIOD', 600) / 60.0
+                    if pos.get('last_loss', False):
+                        cooldown_min = 240  # 4 hours
                     if (idx - pos.get('last_close_time', -99999)) < cooldown_min:
                         continue
                     
                     setup = None
                     if btc_uptrend and btc_uptrend_15m and pair_safe:
-                        if price > vwap:
+                        if price > sma200:
                             macdh_curr = s_data['macdh'][idx]
                             macdh_prev = s_data['macdh'][idx-1] if idx > 0 else 0.0
                             macd = s_data['macd'][idx]
                             adx = s_data['adx'][idx]
-                            if macdh_curr > 0 and macdh_prev <= 0 and macd > 0 and adx > 20 and rsi < 70:
-                                setup = "V110_MACD_Mom"
+                            vol = s_data['volume'][idx]
+                            vol_sma = s_data['vol_sma'][idx]
+                            if macdh_curr > 0 and macdh_prev <= 0 and macd > 0 and adx > 25 and rsi > 40 and rsi < 70 and vol > vol_sma * 2.0:
+                                setup = "V114_MACD_Mom"
                         
                     if setup:
                         volatility = atr / price

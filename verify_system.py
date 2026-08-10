@@ -444,21 +444,46 @@ def check_code_quality():
     return success
 
 if __name__ == "__main__":
-    success = check_syntax()
-    if success: success = check_bot_logic()
-    if success: success = check_backtester()
-    if success:
-        from check_consistency import check_consistency
-        success = check_consistency()
-    if success: success = check_monitoring()
-    if success: success = check_version_consistency()
-    if success: success = check_email_alignment()
-    if success: success = check_code_quality()
-    if success: success = check_historical_stress_tests()
+    print("\n--- Running System Verification ---")
     
-    if success:
+    # 1. Independent Static Checks (always run all of these to aggregate errors)
+    syntax_ok = check_syntax()
+    quality_ok = check_code_quality()
+    version_ok = check_version_consistency()
+    email_ok = check_email_alignment()
+    
+    static_success = syntax_ok and quality_ok and version_ok and email_ok
+    overall_success = static_success
+    
+    # 2. Runtime Checks (only run if static checks passed to prevent cascading tracebacks)
+    if static_success:
+        logic_ok = check_bot_logic()
+        backtester_ok = check_backtester()
+        
+        try:
+            from check_consistency import check_consistency
+            consistency_ok = check_consistency()
+        except Exception as e:
+            print(f"  [FAIL] check_consistency error: {e}")
+            consistency_ok = False
+            
+        monitoring_ok = check_monitoring()
+        
+        runtime_success = logic_ok and backtester_ok and consistency_ok and monitoring_ok
+        overall_success = overall_success and runtime_success
+        
+        # 3. Slow API Checks (only run if runtime logic is sound)
+        if runtime_success:
+            stress_ok = check_historical_stress_tests()
+            overall_success = overall_success and stress_ok
+        else:
+            print("\n[WARN] Skipping historical stress tests due to runtime check failures.")
+    else:
+        print("\n[WARN] Skipping runtime and stress tests due to static check failures.")
+        
+    if overall_success:
         print("\n[SUCCESS] System Verification Passed.")
         sys.exit(0)
     else:
-        print("\n[CRITICAL] System Verification Failed!")
+        print("\n[CRITICAL] System Verification Failed! Please fix ALL the above errors.")
         sys.exit(1)

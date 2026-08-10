@@ -44,6 +44,7 @@ WHITELIST = {
     'trading_bot.db',
     '.env',
     '.env.template',
+    '.gitignore',
     '.bashrc',
     '.profile',
     '.bash_history',
