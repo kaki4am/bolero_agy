@@ -1,35 +1,52 @@
-import asyncio
-import json
-import logging
+import pickle
+import glob
+import os
 import sys
-from portfolio_backtester import PortfolioBacktester
+import json
 
-logging.basicConfig(level=logging.ERROR)
-
-async def main():
+if len(sys.argv) > 1 and sys.argv[1] == '--baseline':
+    import importlib.util
+    import shutil
+    shutil.copy2('/root/backups/portfolio_backtester.py.bak', '/tmp/pb_temp.py')
+    spec = importlib.util.spec_from_file_location('pb', '/tmp/pb_temp.py')
+    pb = importlib.util.module_from_spec(spec)
+    sys.modules['pb'] = pb
+    spec.loader.exec_module(pb)
+    PortfolioBacktester = pb.PortfolioBacktester
+    
     try:
+        with open('/root/backups/config.json.bak', 'r') as f:
+            params = json.load(f)
+    except:
         with open('/root/config.json', 'r') as f:
             params = json.load(f)
-            
-        pb = PortfolioBacktester(symbols=[
-            'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'DOGEUSDT', 
-            'DOTUSDT', 'LTCUSDT', 'LINKUSDT', 'AVAXUSDT', 'POLUSDT', 'UNIUSDT', 'ATOMUSDT', 
-            'INJUSDT', 'RNDRUSDT', 'NEARUSDT', 'FILUSDT', 'OPUSDT', 'APTUSDT'
-        ])
-        await pb.fetch_data()
-        pb.precalculate_all(params)
-        
-        pnl = pb.run(params)
-        trades_out = pb.trades
-        
-        wins = len([t for t in trades_out if t['pnl'] > 0])
-        losses = len([t for t in trades_out if t['pnl'] <= 0])
-        print(f"RECENT 5-DAY BACKTEST: {len(trades_out)} trades | {wins}W/{losses}L | PnL: {pnl:.2f}%")
-    except Exception as e:
-        print(f"RECENT 5-DAY BACKTEST: Failed ({e})")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+else:
+    from portfolio_backtester import PortfolioBacktester
+    with open('/root/config.json', 'r') as f:
+        params = json.load(f)
 
-if __name__ == '__main__':
-    asyncio.run(main())
+def main():
+    cache_files = glob.glob('/root/.backtester_cache/segment_*_UTC_*.pkl')
+    if not cache_files:
+        import traceback; traceback.print_exc(); print("-999.0")
+        return
+        
+    latest_cache = max(cache_files, key=os.path.getmtime)
+    
+    try:
+        with open(latest_cache, 'rb') as f:
+            cached = pickle.load(f)
+            
+        tester = PortfolioBacktester(symbols=list(cached['pair_data'].keys()))
+        tester.pair_data = cached['pair_data']
+        tester.btc_df = cached.get('btc_df')
+        tester.btc_15m = cached.get('btc_15m')
+            
+        tester.precalculate_all(params)
+        res = tester.run(params)
+        print(f"{res:.4f}")
+    except Exception:
+        import traceback; traceback.print_exc(); print("-999.0")
+
+if __name__ == "__main__":
+    main()

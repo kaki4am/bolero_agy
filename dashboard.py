@@ -4,6 +4,8 @@ from rich.panel import Panel
 from rich.layout import Layout
 from rich.live import Live
 from blessed import Terminal
+import json
+import os
 from trading_utils import get_trade_data, calculate_detailed_pnl, get_binance_client, humanize_time
 
 term = Terminal()
@@ -79,10 +81,33 @@ def main():
                 
                 if positions:
                     pnl_text += "[bold underline]Open Positions:[/bold underline]\n"
+                    
+                    dashboard_data = {}
+                    if os.path.exists('/root/dashboard_data.json'):
+                        try:
+                            with open('/root/dashboard_data.json', 'r') as f:
+                                dashboard_data = json.load(f)
+                        except:
+                            pass
+
                     for p in positions:
                         p_color = "green" if p['pnl'] >= 0 else "red"
                         asset_name = p['pair'].replace('USDT', '')
                         pnl_text += f"{asset_name}: {p['qty']:.6f} (${p['value']:.2f}) [PnL: [{p_color}]${p['pnl']:.2f}[/{p_color}]]\n"
+                        
+                        pair_inds = dashboard_data.get(p['pair'])
+                        if pair_inds:
+                            rsi = pair_inds.get('rsi', 0)
+                            adx = pair_inds.get('adx_1h', 0)
+                            pu = "UP" if pair_inds.get('pair_uptrend') else "DOWN"
+                            bu = "UP" if pair_inds.get('btc_uptrend') else "DOWN"
+                            sqz = "YES" if pair_inds.get('bb_squeeze') else "NO"
+                            sma = pair_inds.get('sma30', 0)
+                            bbu = pair_inds.get('bb_upper', 0)
+                            pnl_text += f"  ↳ Squeeze: {sqz} | SMA30: {sma:.4f} | BBU: {bbu:.4f}\n"
+                            pnl_text += f"  ↳ RSI: {rsi:.1f} | 1h ADX: {adx:.1f} | Pair 15m: {pu} | BTC 15m: {bu}\n"
+                
+
                 
                 layout["pnl_summary"].update(Panel(pnl_text, title="Financial Performance"))
                 layout["footer"].update(Panel("ARROWS: Scroll | Q: Quit", style="dim"))

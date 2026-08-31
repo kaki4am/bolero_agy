@@ -197,3 +197,78 @@ def calculate_detailed_pnl(df, client=None):
             print(f"Error fetching prices or balances: {e}")
 
     return realized_pnl - total_fees_usdt, unrealized_pnl, current_positions_data
+
+def get_account_snapshot_data(client=None):
+    if client is None:
+        client = get_binance_client()
+    snap = client.get_account_snapshot(type='SPOT', limit=30)
+    prices = client.get_all_tickers()
+    btc_price = float([p['price'] for p in prices if p['symbol'] == 'BTCUSDT'][0])
+    
+    btc_klines = client.get_historical_klines('BTCUSDT', '1d', '35 days ago UTC')
+    btc_price_map = {datetime.fromtimestamp(k[0]/1000).date(): float(k[4]) for k in btc_klines}
+    
+    snapshots = snap.get('snapshotVos', [])
+    if not snapshots:
+        return None
+        
+    start_val = float(snapshots[0]['data']['totalAssetOfBtc']) * btc_price_map.get(datetime.fromtimestamp(snapshots[0]['updateTime']/1000).date(), btc_price)
+    start_date = datetime.fromtimestamp(snapshots[0]['updateTime']/1000).date()
+    
+    acc = client.get_account()
+    balances = {b['asset']: float(b['free']) + float(b['locked']) for b in acc['balances'] if float(b['free']) > 0 or float(b['locked']) > 0}
+    
+    current_cash = balances.get('USDT', 0.0)
+    current_positions_val = 0.0
+    price_map = {p['symbol']: float(p['price']) for p in prices}
+    
+    active_assets = []
+    for asset, qty in balances.items():
+        if asset == 'USDT':
+            active_assets.append({'asset': 'USDT', 'qty': qty, 'val': qty})
+        else:
+            pair = f"{asset}USDT"
+            p = price_map.get(pair, 0.0)
+            val = qty * p
+            current_positions_val += val
+            active_assets.append({'asset': asset, 'qty': qty, 'val': val})
+            
+    current_total = current_cash + current_positions_val
+    abs_pnl = current_total - start_val
+    pct_pnl = (current_total / start_val - 1) * 100 if start_val > 0 else 0
+    
+    btc_start = btc_price_map.get(start_date, btc_price)
+    btc_pct = (btc_price / btc_start - 1) * 100 if btc_start > 0 else 0
+    alpha = pct_pnl - btc_pct
+    
+    vals = []
+    daily_history = []
+    for entry in snapshots:
+        dt_iter = datetime.fromtimestamp(entry['updateTime']/1000).date()
+        btc_val = float(entry['data']['totalAssetOfBtc'])
+        p_btc = btc_price_map.get(dt_iter, btc_price)
+        usdt_val = btc_val * p_btc
+        vals.append(usdt_val)
+        daily_history.append({'date': dt_iter, 'btc_val': btc_val, 'usdt_val': usdt_val})
+    vals.append(current_total)
+    
+    import json
+    try:
+        with open('/root/pnl_history.json', 'w') as f:
+            json.dump(vals, f)
+    except Exception:
+        pass
+        
+    return {
+        'btc_price': btc_price,
+        'start_date': start_date,
+        'start_val': start_val,
+        'current_total': current_total,
+        'abs_pnl': abs_pnl,
+        'pct_pnl': pct_pnl,
+        'btc_pct': btc_pct,
+        'alpha': alpha,
+        'active_assets': active_assets,
+        'vals': vals,
+        'daily_history': daily_history
+    }

@@ -77,7 +77,7 @@ def main():
         except Exception as e:
             print(f"Error reading config: {e}")
 
-    prompt = f"""You are the dynamic AI Risk Manager for a live Binance spot trading bot that uses a short-term momentum strategy (6-48h holds).
+    prompt = f"""You are the dynamic AI Risk Manager for a live Binance spot trading bot that uses a Capitulation Bounce strategy (buying oversold dips, 15m to 24h holds).
 
 INPUT TELEMETRY:
 - Local Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}

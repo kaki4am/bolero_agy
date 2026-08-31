@@ -1,4 +1,4 @@
-# Research Notes & Rejected Experiments Ledger
-This file is a persistent memory bank for all Antigravity agent cron jobs (AI Manager, Price Research, Bot Research, Strategy Evolver).
-Whenever you test an idea and reject it, or analyze market data and conclude NO code changes are necessary, append a concise 1-sentence note here so you don't repeat the same failed experiments in the future.
-
+Tuner degradation live-trading pause was rejected as the tuner currently safely discards negative configs without needing to halt the active stable strategy.
+Rejected Trade Ideas (Time-of-day, Day-of-week, Pair Exclusions) because they were highly overfit to historical data and directly caused the reported trade stagnation.
+Rejected Time-of-Day, Day-of-Week, and Pair Exclusion filters due to high risk of curve-fitting and degrading overall system adaptability.
+Static time-of-day, day-of-week, and pair-specific exclusions were rejected in V150 to avoid curve-fitting, moving instead to dynamic volatility and momentum filters.

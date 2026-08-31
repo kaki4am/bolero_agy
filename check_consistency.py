@@ -73,8 +73,8 @@ def check_consistency():
             print(f"  [PASS] Trailing stop params aligned: {bot_trail_keys}")
     
     # 5. Time-based exit alignment
-    bot_has_time_exit = '48 * 3600' in bot or 'TIME EXIT' in bot
-    bt_has_time_exit = '2880' in bt or 'TimeExit' in bt
+    bot_has_time_exit = 'TIME EXIT' in bot or 'TimeExit' in bot or 'time exit' in bot.lower()
+    bt_has_time_exit = 'TimeExit' in bt or 'TIME EXIT' in bt or 'time exit' in bt.lower()
     if bot_has_time_exit != bt_has_time_exit:
         issues.append(f"Time exit mismatch - Bot has: {bot_has_time_exit}, BT has: {bt_has_time_exit}")
     else:
@@ -82,8 +82,8 @@ def check_consistency():
             print("  [PASS] Time-based exit present in both")
     
     # 6. Min hold alignment
-    bot_min_hold = '6 * 3600' in bot or 'min_hold' in bot
-    bt_min_hold = '360' in bt and 'min_hold' in bt
+    bot_min_hold = 'min_hold' in bot
+    bt_min_hold = 'min_hold' in bt
     if bot_min_hold != bt_min_hold:
         issues.append(f"Min hold mismatch - Bot has: {bot_min_hold}, BT has: {bt_min_hold}")
     else:

@@ -4,7 +4,7 @@
     "VOL_SPIKE_MULT_OFFSET": 0.0,
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
-    "rationale": "BTC is flat to positive (+0.08%) with no specific negative catalysts identified in the news, warranting default neutral risk parameters.",
-    "confidence": 1.0,
+    "rationale": "BTC is relatively stable (-0.80%) alongside bullish news such as MicroStrategy resuming purchases, warranting a default full-risk posture.",
+    "confidence": 0.95,
     "learning_to_persist": ""
 }

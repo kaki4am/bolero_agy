@@ -72,13 +72,23 @@ def check_backtester():
         
         tester = pb_mod.PortfolioBacktester(symbols=['TESTUSDT'])
         
-        search_space = {
-            'EMA_FAST': [50], 'EMA_SLOW': [200], 'ST_PERIOD': [7], 'ST_MULT': [3.0],
-            'CHOP_PERIOD': [14], 'ADX_PERIOD': [14], 'BB_LENGTH': [20], 'BB_STD': [2.0],
-            'ATR_PERIOD': [14], 'STOCH_K': [14], 'STOCH_D': [3], 'MFI_PERIOD': [14],
-            'CMF_PERIOD': [20], 'OBV_EMA_PERIOD': [30], 'KC_PERIOD': [20], 'KC_MULT': [2.0],
-            'VWMA_PERIOD': [20]
-        }
+        import json
+        config_params = {}
+        if os.path.exists('config.json'):
+            with open('config.json', 'r') as f:
+                config_params = json.load(f)
+        
+        # Fallback to minimal config if file is empty
+        if not config_params:
+            config_params = {
+                'EMA_FAST': 50, 'EMA_SLOW': 200, 'MIN_VOLATILITY': 0.001,
+                'BASE_RISK_PERCENT': 3.0, 'MAX_RISK_PER_TRADE_PERCENT': 20.0,
+                'COOLDOWN_PERIOD': 600, 'MAX_PAIRS': 40, 'PORTFOLIO_EJECT': -5.0,
+                'PORTFOLIO_HARVEST': 5.0, 'SL_MIN_PCT': 0.015, 'SL_MAX_PCT': 0.03,
+                'ATR_SL_MULT': 2.5
+            }
+            
+        search_space = {k: [v] for k, v in config_params.items()}
         
         mock_df_1m = pd.DataFrame({
             'timestamp': pd.date_range(start='2026-05-10', periods=1000, freq='min'),
@@ -99,15 +109,7 @@ def check_backtester():
         
         tester.pair_data = {'TESTUSDT': {'1m': mock_df_1m, '15m': mock_df_15m}}
         tester.precalculate_all(search_space)
-        results = tester.run({
-            'EMA_FAST': 50, 'EMA_SLOW': 200, 'ST_PERIOD': 7, 'ST_MULT': 3.0,
-            'CHOP_PERIOD': 14, 'ADX_PERIOD': 14, 'BB_LENGTH': 20, 'BB_STD': 2.0,
-            'ATR_PERIOD': 14, 'STOCH_K': 14, 'STOCH_D': 3, 'MFI_PERIOD': 14,
-            'CMF_PERIOD': 20, 'OBV_EMA_PERIOD': 30, 'KC_PERIOD': 20, 'KC_MULT': 2.0,
-            'VWMA_PERIOD': 20, 'RSI_PERIOD': 14, 'CHOP_THRESHOLD': 50, 'ADX_THRESHOLD': 25,
-            'STOCH_OVERSOLD': 20, 'PRICE_DROP_THRESHOLD': 0.03, 'MAX_ENTRIES_PER_PAIR': 2,
-            'VOL_SPIKE_MULT': 2.0
-        })
+        results = tester.run(config_params)
         
         print(f"  [PASS] Backtester finished test run. Profit: {results}%")
         return True
@@ -194,7 +196,7 @@ def check_version_consistency():
                 
     unique_versions = set(versions.values())
     if len(unique_versions) > 1:
-        print(f"  [FAIL] Strategy Version Mismatch detected!")
+        print("  [FAIL] Strategy Version Mismatch detected!")
         for source, v in versions.items():
             print(f"    - {source}: V{v}")
         return False
@@ -329,81 +331,6 @@ def check_historical_stress_tests():
                 print(f"  [PASS] {k}: {pnl:+.2f}%")
             
     return success
-
-def check_email_alignment():
-    print("\nStep 6: Email Report Alignment Check")
-    try:
-        import json
-        if not os.path.exists('config.json'):
-            print("  [FAIL] config.json not found")
-            return False
-        with open('config.json', 'r') as f:
-            active_config = json.load(f)
-            
-        gemini_path = 'GEMINI.md'
-        active_ver = "Unknown"
-        if os.path.exists(gemini_path):
-            with open(gemini_path, 'r') as f:
-                first_line = f.readline()
-                match = re.search(r'Strategy (V\d+)', first_line)
-                if match:
-                    active_ver = match.group(1)
-                    
-        spec = importlib.util.spec_from_file_location("report", "send_daily_report.py")
-        report_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(report_mod)
-        
-        mock_health = {
-            'overall_status': 'OK',
-            'services': {'trading-bot': 'active', 'backtest-optimizer': 'active'}
-        }
-        mock_pnl = {
-            'total_realized_pnl': 0.0,
-            'completed_trades': [],
-            'failed_trades_count': 0
-        }
-        mock_strategy = {
-            'current_strategy': f'Binance Trading Bot (Strategy {active_ver})',
-            'version': f'Strategy {active_ver}',
-            'latest_task': 'None',
-            'version_age_days': 0
-        }
-        mock_projection = {
-            'start_date': '2026-07-01',
-            'end_date': '2026-07-05',
-            'returns_table': '<tr></tr>',
-            'r_daily_v90': 0.0,
-            'r_daily_10d': 0.0,
-            'p1': 0.0, 'p2': 0.0, 'p5': 0.0, 'p10': 0.0,
-            'p1_10d': 0.0, 'p2_10d': 0.0
-        }
-        mock_random_walk = {'pnl': 0.0, 'start': '2026-07-01', 'end': '2026-07-05', 'relative_age': '0 days', 'symbols': []}
-        
-        body_html = report_mod.format_email_body(
-            mock_health, mock_pnl, "", "", mock_strategy, mock_projection, mock_random_walk
-        )
-        
-        if active_ver != "Unknown" and f"Strategy {active_ver}" not in body_html:
-            print(f"  [FAIL] Email content does not mention active version: Strategy {active_ver}")
-            return False
-            
-        for key, val in active_config.items():
-            if key not in body_html:
-                print(f"  [FAIL] Email parameter table is missing active config key: {key}")
-                return False
-                
-        if "+-" in body_html:
-            print("  [FAIL] Email content contains display glitch '+-'")
-            return False
-            
-        print("  [PASS] Email alignment check passed (verified version, parameters, and formatting).")
-        return True
-    except Exception as e:
-        print(f"  [FAIL] Email alignment check error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
 def check_code_quality():
     print("\nStep 7: Code Quality & Dead Code Check (pyflakes & vulture)")
     py_files = [f for f in os.listdir('.') if f.endswith('.py') and f != 'verify_system.py' and not f.startswith('experiment') and not f.startswith('test')]
@@ -417,7 +344,7 @@ def check_code_quality():
     print("  Running pyflakes...")
     try:
         cmd = ['/root/venv/bin/pyflakes'] + py_files
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         print("    [PASS] pyflakes check passed.")
     except subprocess.CalledProcessError as e:
         print("    [FAIL] pyflakes detected code quality or import issues:")
@@ -431,7 +358,7 @@ def check_code_quality():
     print("  Running vulture...")
     try:
         cmd = ['/root/venv/bin/vulture'] + py_files
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         print("    [PASS] vulture check passed.")
     except subprocess.CalledProcessError as e:
         print("    [FAIL] vulture detected unused code:")
@@ -450,9 +377,9 @@ if __name__ == "__main__":
     syntax_ok = check_syntax()
     quality_ok = check_code_quality()
     version_ok = check_version_consistency()
-    email_ok = check_email_alignment()
     
-    static_success = syntax_ok and quality_ok and version_ok and email_ok
+    
+    static_success = syntax_ok and quality_ok and version_ok
     overall_success = static_success
     
     # 2. Runtime Checks (only run if static checks passed to prevent cascading tracebacks)

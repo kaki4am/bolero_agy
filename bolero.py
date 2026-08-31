@@ -8,9 +8,7 @@ def main():
         "📈 Live Trading Bot (trades, entries, exits)",
         "⚙️ Tuner Grid Search (runs continuously, optimizes params)",
         "🤖 AI Risk Manager (hourly tactical adjustments)",
-        "🧬 Strategy Evolver (nightly code evolution at 1am)",
-        "🔬 Weekly Trade Research (Sundays 3am, mines trade DB)",
-        "📊 Price Data Research (bi-weekly, tests new signals)",
+        "🧬 Nightly AI Committee (Strategy, Trade, & Price Research)",
         "👀 Asset Tracking Dashboard (active & restricted pairs)",
         "💸 Forecast View (expected money based on last N days)",
         "❌ Exit"
@@ -47,7 +45,7 @@ def main():
             elif key.code == term.KEY_DOWN:
                 selected_idx = (selected_idx + 1) % len(options)
             elif key.code == term.KEY_ENTER or key == '\n' or key == '\r':
-                if selected_idx == 8:  # Exit option
+                if selected_idx == 6:  # Exit option
                     break
                 
                 print(term.clear)
@@ -67,29 +65,19 @@ def main():
                             print(term.bold_red("AI Manager log not found. Runs hourly via cron."))
                             term.inkey(timeout=3)
                     elif selected_idx == 3:
-                        # Strategy Evolver logs (nightly optimize.sh)
+                        # Nightly AI Committee logs
                         log_path = "/root/strategy_evolver.log"
                         if os.path.exists(log_path):
                             subprocess.run(["less", "+G", log_path])
                         else:
-                            print(term.bold_red("Strategy evolver log not found."))
+                            print(term.bold_red("Committee log not found."))
                             term.inkey(timeout=3)
                     elif selected_idx == 4:
-                        # Weekly trade research log
-                        log_path = "/root/weekly_research.log"
-                        if os.path.exists(log_path):
-                            subprocess.run(["less", "+G", log_path])
-                        else:
-                            print(term.bold_yellow("Weekly research log not found. Runs Sundays at 3am."))
-                            term.inkey(timeout=3)
+                        # View blacklist
+                        subprocess.run(["/root/venv/bin/python", "/root/view_blacklist.py"])
                     elif selected_idx == 5:
-                        # Price data research (live output)
-                        log_path = "/root/price_research.log"
-                        if os.path.exists(log_path):
-                            subprocess.run(["less", "+G", log_path])
-                        else:
-                            print(term.bold_yellow("Price research log not found. Runs bi-weekly Sundays at 4am."))
-                            term.inkey(timeout=3)
+                        # Forecast View
+                        subprocess.run(["/root/venv/bin/python", "/root/forecast_dashboard.py"])
                     elif selected_idx == 6:
                         # View blacklist
                         subprocess.run(["/root/venv/bin/python", "/root/view_blacklist.py"])

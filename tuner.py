@@ -20,24 +20,19 @@ STATUS_FILE = 'backtest_status.json'
 SEARCH_SPACE = {
     'EMA_FAST': [50],
     'EMA_SLOW': [200],
-    'MIN_VOLATILITY': [0.0010],
-    'BASE_RISK_PERCENT': [2.0],
+    'MIN_VOLATILITY': [0.0010, 0.0020],
+    'BASE_RISK_PERCENT': [1.0, 2.0, 3.0, 4.0],
     'MAX_RISK_PER_TRADE_PERCENT': [10.0, 15.0, 20.0],
-    'COOLDOWN_PERIOD': [600],
-    'ATR_SL_MULT': [2.5, 3.0, 3.5],
-    'PORTFOLIO_EJECT': [-5.0],
-    'PORTFOLIO_HARVEST': [4.0, 5.0],
-    'SL_MIN_PCT': [0.015],
-    'SL_MAX_PCT': [0.030, 0.040],
-    'BE_TRIGGER': [0.010, 0.015, 0.020],
-    'BE_LOCK': [0.002],
-    'TRAILING_TRIGGER': [0.020, 0.030, 0.040],
-    'TRAILING_DIST': [0.010, 0.015, 0.020],
-    'VOLATILITY_CAP': [0.015, 0.020],
-    'SCALE_1_POS': [0.8],
-    'SCALE_2_POS': [0.6],
-    'SCALE_3_POS': [0.4],
-    'VOLUME_SMA_WINDOW': [20]
+    'COOLDOWN_PERIOD': [300, 600, 900],
+    'ATR_SL_MULT': [2.0, 2.5, 3.0, 3.5],
+    'PORTFOLIO_EJECT': [-10.0, -5.0, -3.0],
+    'PORTFOLIO_HARVEST': [4.0, 5.0, 8.0, 12.0],
+    'SL_MIN_PCT': [0.010, 0.015, 0.020],
+    'SL_MAX_PCT': [0.020, 0.025, 0.030],
+    'VOLATILITY_CAP': [0.015, 0.020, 0.025, 0.030],
+    'SCALE_1_POS': [0.8, 1.0],
+    'SCALE_2_POS': [0.6, 0.8],
+    'SCALE_3_POS': [0.4, 0.6]
 }
 
 def save_config(params):
@@ -274,27 +269,30 @@ async def optimize():
             'EMA_FAST': trial.suggest_categorical('EMA_FAST', SEARCH_SPACE['EMA_FAST']),
             'EMA_SLOW': trial.suggest_categorical('EMA_SLOW', SEARCH_SPACE['EMA_SLOW']),
             'MIN_VOLATILITY': trial.suggest_categorical('MIN_VOLATILITY', SEARCH_SPACE['MIN_VOLATILITY']),
-            'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 1.0, 5.0),
-            'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 5.0, 25.0),
+            'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 0.5, 10.0),
+            'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 5.0, 50.0),
             'COOLDOWN_PERIOD': trial.suggest_categorical('COOLDOWN_PERIOD', SEARCH_SPACE['COOLDOWN_PERIOD']),
-            'ATR_SL_MULT': trial.suggest_float('ATR_SL_MULT', 1.5, 4.5),
-            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
-            'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 10.0),
-            'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.025),
-            'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.025, 0.060),
-            'BE_TRIGGER': trial.suggest_float('BE_TRIGGER', 0.005, 0.030),
-            'BE_LOCK': trial.suggest_float('BE_LOCK', 0.001, 0.005),
-            'TRAILING_TRIGGER': trial.suggest_float('TRAILING_TRIGGER', 0.015, 0.050),
-            'TRAILING_DIST': trial.suggest_float('TRAILING_DIST', 0.005, 0.025),
-            'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.100),
-            'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.030),
+            'ATR_SL_MULT': trial.suggest_float('ATR_SL_MULT', 1.0, 8.0),
+            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -20.0, -2.0),
+            'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 20.0),
+            'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.050),
+            'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.025, 0.100),
+            'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.200),
+            'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.050),
             'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),
             'SCALE_2_POS': trial.suggest_float('SCALE_2_POS', 0.3, 0.8),
-            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6),
-            'VOLUME_SMA_WINDOW': trial.suggest_categorical('VOLUME_SMA_WINDOW', SEARCH_SPACE['VOLUME_SMA_WINDOW'])
+            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6)
         }
         
         train_profit = bt_train.run(params)
+        
+        # Penalize < 6h avg hold times
+        trades = bt_train.trades
+        if len(trades) > 0:
+            avg_hold_time = sum(t.get('hold_time', 0) for t in trades) / len(trades)
+            if avg_hold_time < 360:
+                penalty = (360 - avg_hold_time) * 0.1
+                train_profit -= penalty
         
         nonlocal best_score, best_params
         if train_profit > best_score:
@@ -318,8 +316,13 @@ async def optimize():
         
         return train_profit
         
+    import hashlib
+    space_str = json.dumps(SEARCH_SPACE, sort_keys=True)
+    space_hash = hashlib.md5(space_str.encode()).hexdigest()[:8]
+    study_name_hash = f"v100_momentum_{space_hash}"
+    
     study = optuna.create_study(
-        study_name="v100_momentum",
+        study_name=study_name_hash,
         storage="sqlite:////root/optuna_study.db",
         load_if_exists=True,
         direction="maximize"

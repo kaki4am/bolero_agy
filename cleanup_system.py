@@ -10,17 +10,15 @@ WHITELIST = {
     'portfolio_backtester.py',
     'trading_utils.py',
     'verify_system.py',
-    'send_daily_report.py',
-    'optimize.sh',
+    'nightly_committee.sh',
+    'run_quick_validation.py',
     'export_report.py',
     'system_health.py',
     'check_pnl.py',
-    'run_quick_validation.py',
     'sell_all.py',
     'get_balance.py',
     'debug_pnl.py',
     'cleanup_system.py',
-    'run_bt.py',
     'get_db_stats.py',
     'db_stats_summary.txt',
     'ai_manager.py',
@@ -30,10 +28,10 @@ WHITELIST = {
     'backtest_dashboard.py',
     'test_dashboards.py',
     'bolero.py',
+    'view_blacklist.py',
+    'forecast_dashboard.py',
     
     # Core tests
-    'test_strategy.py',
-    'test_pb.py',
     'test_backtest.py',
     'check_consistency.py',
     
@@ -50,7 +48,6 @@ WHITELIST = {
     '.bash_history',
     'GEMINI.md',
     'verify.log',
-    'email_report.log',
     'strategy_evolver.log',
     'daily_opinion.html',
     'daily_report.json',
@@ -63,12 +60,10 @@ WHITELIST = {
     'tactical_overrides.json',
     'ai_manager.log',
     'active_positions.json',
-    'weekly_research.sh',
-    'weekly_research.html',
-    'weekly_research.log',
-    'price_research.sh',
-    'price_research.html',
-    'price_research.log'
+    'audit_hygiene.sh',
+    'hygiene_report.md',
+    'audit_coherence.sh',
+    'coherence_report.md'
 }
 
 def run_cleanup():
