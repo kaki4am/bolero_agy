@@ -97,15 +97,14 @@ def main():
                         
                         pair_inds = dashboard_data.get(p['pair'])
                         if pair_inds:
-                            rsi = pair_inds.get('rsi', 0)
-                            adx = pair_inds.get('adx_1h', 0)
-                            pu = "UP" if pair_inds.get('pair_uptrend') else "DOWN"
+                            er = pair_inds.get('er', 0)
+                            atr = pair_inds.get('atr', 0)
                             bu = "UP" if pair_inds.get('btc_uptrend') else "DOWN"
                             sqz = "YES" if pair_inds.get('bb_squeeze') else "NO"
                             sma = pair_inds.get('sma30', 0)
                             bbu = pair_inds.get('bb_upper', 0)
                             pnl_text += f"  ↳ Squeeze: {sqz} | SMA30: {sma:.4f} | BBU: {bbu:.4f}\n"
-                            pnl_text += f"  ↳ RSI: {rsi:.1f} | 1h ADX: {adx:.1f} | Pair 15m: {pu} | BTC 15m: {bu}\n"
+                            pnl_text += f"  ↳ ER: {er:.2f} | 1h ATR: {atr:.4f} | BTC 15m: {bu}\n"
                 
 
                 

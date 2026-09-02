@@ -38,7 +38,7 @@ def main():
         try:
             conn = sqlite3.connect('/root/trading_bot.db')
             cursor = conn.cursor()
-            cursor.execute("SELECT pair, price, timestamp FROM active_trades")
+            cursor.execute("SELECT pair, price, timestamp FROM trades WHERE id IN (SELECT MAX(id) FROM trades GROUP BY pair) AND side='BUY'")
             for r in cursor.fetchall():
                 active[r[0]] = {"entry_price": r[1], "entry_time": r[2]}
             conn.close()

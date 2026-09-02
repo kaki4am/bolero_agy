@@ -158,7 +158,7 @@ def generate_dashboard():
 
     # Pairs Panel
     pairs_text = ", ".join(status.get('pairs', []))
-    pairs_panel = Panel(f"Testing against top 50 volume pairs: [bold cyan]{pairs_text}[/bold cyan]", title="Target Portfolio")
+    pairs_panel = Panel(f"Testing against top 20 volume pairs: [bold cyan]{pairs_text}[/bold cyan]", title="Target Portfolio")
 
     layout = Layout()
     layout.split_column(

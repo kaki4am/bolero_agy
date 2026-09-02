@@ -1,6 +1,5 @@
 import os
 import json
-import sqlite3
 import urllib.request
 import xml.etree.ElementTree as ET
 import subprocess
@@ -34,25 +33,16 @@ def get_market_telemetry():
     btc_price = float(btc_ticker['lastPrice'])
     btc_change = float(btc_ticker['priceChangePercent'])
     
-    # Get active positions from DB
     active_positions = []
     try:
-        conn = sqlite3.connect('trading_bot.db')
-        # We find open positions in database by inspecting trades log
-        query = "SELECT pair, side, price, quantity FROM trades WHERE id IN (SELECT MAX(id) FROM trades GROUP BY pair)"
-        import pandas as pd
-        df = pd.read_sql_query(query, conn)
-        acc = client.get_account()
-        balances = {b['asset']: float(b['free']) + float(b['locked']) for b in acc['balances'] if float(b['free']) > 0 or float(b['locked']) > 0}
-        
-        for _, row in df.iterrows():
-            pair = row['pair']
-            asset = pair.replace('USDT', '')
-            if row['side'] == 'BUY' and balances.get(asset, 0) > 0.0001:
-                active_positions.append(f"{pair} (Entry: {row['price']}, Qty: {balances[asset]:.4f})")
-        conn.close()
+        if os.path.exists('/root/active_positions.json'):
+            with open('/root/active_positions.json', 'r') as f:
+                data = json.load(f)
+                pos_dict = data.get('active_positions', {})
+                for pair, p in pos_dict.items():
+                    active_positions.append(f"{pair} (Entry: {p.get('entry_price')}, Qty: {p.get('qty'):.4f})")
     except Exception as e:
-        print(f"Error reading positions from DB: {e}")
+        print(f"Error reading positions from JSON: {e}")
         
     return btc_price, btc_change, active_positions
 
@@ -68,16 +58,9 @@ def main():
     print("Fetching news headlines...")
     news = get_news_headlines()
 
-    # Load baseline config
-    base_config = {}
-    if os.path.exists('config.json'):
-        try:
-            with open('config.json', 'r') as f:
-                base_config = json.load(f)
-        except Exception as e:
-            print(f"Error reading config: {e}")
 
-    prompt = f"""You are the dynamic AI Risk Manager for a live Binance spot trading bot that uses a Capitulation Bounce strategy (buying oversold dips, 15m to 24h holds).
+
+    prompt = f"""You are the dynamic AI Risk Manager for a live Binance spot trading bot that uses a Trend-Filtered BB Squeeze Breakout strategy (15m to 24h holds).
 
 INPUT TELEMETRY:
 - Local Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}

@@ -18,21 +18,21 @@ USE_TESTNET = os.getenv('USE_TESTNET', 'True') == 'True'
 STATUS_FILE = 'backtest_status.json'
 
 SEARCH_SPACE = {
-    'EMA_FAST': [50],
-    'EMA_SLOW': [200],
     'MIN_VOLATILITY': [0.0010, 0.0020],
-    'BASE_RISK_PERCENT': [1.0, 2.0, 3.0, 4.0],
+    'BASE_RISK_PERCENT': [1.0, 2.0, 3.0, 3.5],
     'MAX_RISK_PER_TRADE_PERCENT': [10.0, 15.0, 20.0],
     'COOLDOWN_PERIOD': [300, 600, 900],
     'ATR_SL_MULT': [2.0, 2.5, 3.0, 3.5],
-    'PORTFOLIO_EJECT': [-10.0, -5.0, -3.0],
+    'PORTFOLIO_EJECT': [-10.0, -5.0, -3.5],
     'PORTFOLIO_HARVEST': [4.0, 5.0, 8.0, 12.0],
     'SL_MIN_PCT': [0.010, 0.015, 0.020],
     'SL_MAX_PCT': [0.020, 0.025, 0.030],
     'VOLATILITY_CAP': [0.015, 0.020, 0.025, 0.030],
     'SCALE_1_POS': [0.8, 1.0],
     'SCALE_2_POS': [0.6, 0.8],
-    'SCALE_3_POS': [0.4, 0.6]
+    'SCALE_3_POS': [0.4, 0.6],
+    'MIN_EFFICIENCY_RATIO': [0.2, 0.3, 0.4],
+    'BREAKOUT_VOL_MULT': [0.05, 0.1, 0.2, 0.3]
 }
 
 def save_config(params):
@@ -120,7 +120,6 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
                 cached = pickle.load(f)
             tester = PortfolioBacktester(symbols=symbols)
             tester.pair_data = cached['pair_data']
-            tester.btc_df = cached['btc_df']
             tester.btc_15m = cached.get('btc_15m')
             tester.symbols = list(tester.pair_data.keys())
             return tester
@@ -131,16 +130,7 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
     try:
         # Calculate warmup dates (12 days for BTC 1h, 5 days for 15m)
         start_date = datetime.strptime(start_str.split(' ')[0], "%Y-%m-%d")
-        btc_1h_start = (start_date - timedelta(days=12)).strftime("%Y-%m-%d") + " UTC"
         btc_15m_start = (start_date - timedelta(days=5)).strftime("%Y-%m-%d") + " UTC"
-
-        # Fetch BTC hourly and 15m
-        btc_1h = await client.get_historical_klines("BTCUSDT", AsyncClient.KLINE_INTERVAL_1HOUR, btc_1h_start, end_str)
-        tester.btc_df = pd.DataFrame(btc_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
-        tester.btc_df['close'] = tester.btc_df['close'].astype(float)
-        tester.btc_df['timestamp'] = pd.to_datetime(tester.btc_df['timestamp'], unit='ms')
-        tester.btc_df['ema200'] = ta.ema(tester.btc_df['close'], length=200)
-        tester.btc_df['rsi'] = ta.rsi(tester.btc_df['close'], length=14)
         
         btc_15m = await client.get_historical_klines("BTCUSDT", AsyncClient.KLINE_INTERVAL_15MINUTE, btc_15m_start, end_str)
         tester.btc_15m = pd.DataFrame(btc_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
@@ -153,7 +143,6 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
         async def fetch_symbol(s):
             try:
                 kl_1m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_1MINUTE, start_str, end_str)
-                kl_15m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_15MINUTE, btc_15m_start, end_str)
                 if not kl_1m or len(kl_1m) < 100:
                     return s, None
                 
@@ -162,12 +151,7 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
                     df_1m[col] = df_1m[col].astype(float)
                 df_1m['timestamp'] = pd.to_datetime(df_1m['timestamp'], unit='ms')
                 
-                df_15m = pd.DataFrame(kl_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
-                for col in ['open', 'high', 'low', 'close', 'volume']:
-                    df_15m[col] = df_15m[col].astype(float)
-                df_15m['timestamp'] = pd.to_datetime(df_15m['timestamp'], unit='ms')
-                
-                return s, {'1m': df_1m, '15m': df_15m}
+                return s, {'1m': df_1m}
             except:
                 return s, None
 
@@ -188,7 +172,6 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
                 with open(cache_file, 'wb') as f:
                     pickle.dump({
                         'pair_data': tester.pair_data,
-                        'btc_df': tester.btc_df,
                         'btc_15m': tester.btc_15m
                     }, f)
                 print(f"Saved segment to cache: {cache_file}")
@@ -266,14 +249,12 @@ async def optimize():
     
     def objective(trial):
         params = {
-            'EMA_FAST': trial.suggest_categorical('EMA_FAST', SEARCH_SPACE['EMA_FAST']),
-            'EMA_SLOW': trial.suggest_categorical('EMA_SLOW', SEARCH_SPACE['EMA_SLOW']),
             'MIN_VOLATILITY': trial.suggest_categorical('MIN_VOLATILITY', SEARCH_SPACE['MIN_VOLATILITY']),
-            'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 0.5, 10.0),
+            'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 0.5, 3.5),
             'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 5.0, 50.0),
             'COOLDOWN_PERIOD': trial.suggest_categorical('COOLDOWN_PERIOD', SEARCH_SPACE['COOLDOWN_PERIOD']),
             'ATR_SL_MULT': trial.suggest_float('ATR_SL_MULT', 1.0, 8.0),
-            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -20.0, -2.0),
+            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
             'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 20.0),
             'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.050),
             'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.025, 0.100),
@@ -281,7 +262,9 @@ async def optimize():
             'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.050),
             'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),
             'SCALE_2_POS': trial.suggest_float('SCALE_2_POS', 0.3, 0.8),
-            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6)
+            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6),
+            'MIN_EFFICIENCY_RATIO': trial.suggest_float('MIN_EFFICIENCY_RATIO', 0.1, 0.6),
+            'BREAKOUT_VOL_MULT': trial.suggest_float('BREAKOUT_VOL_MULT', 0.05, 0.5)
         }
         
         train_profit = bt_train.run(params)

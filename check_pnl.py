@@ -1,4 +1,4 @@
-import os
+
 from trading_utils import get_account_snapshot_data
 
 print("Fetching 30-day Account Snapshots...")

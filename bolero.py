@@ -78,12 +78,6 @@ def main():
                     elif selected_idx == 5:
                         # Forecast View
                         subprocess.run(["/root/venv/bin/python", "/root/forecast_dashboard.py"])
-                    elif selected_idx == 6:
-                        # View blacklist
-                        subprocess.run(["/root/venv/bin/python", "/root/view_blacklist.py"])
-                    elif selected_idx == 7:
-                        # Forecast View
-                        subprocess.run(["/root/venv/bin/python", "/root/forecast_dashboard.py"])
                 except Exception as e:
                     print(term.red(f"Error executing action: {e}"))
                     term.inkey(timeout=3)

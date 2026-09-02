@@ -13,7 +13,7 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, search_space, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V144 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V150 Indicators...")
         total = len(self.pair_data)
         
         # Pre-align BTC Trend to 1m resolution
@@ -33,31 +33,53 @@ class PortfolioBacktester:
                 status_callback(f"[{i+1}/{total}] Processing {symbol}...")
             
             df_1m = data['1m'].copy()
-            df_15m = data['15m'].copy()
             
             indicators = {}
             
             indicators['sma30'] = ta.sma(df_1m['close'], length=30)
+            sma20 = ta.sma(df_1m['close'], length=20)
+            atr1m = ta.atr(df_1m['high'], df_1m['low'], df_1m['close'], length=14)
             bb = ta.bbands(df_1m['close'], length=20, std=2.0)
+            
             if bb is not None and not bb.empty:
                 indicators['bb_upper'] = bb['BBU_20_2.0_2.0'].ffill()
-                bb_bandwidth = bb['BBB_20_2.0_2.0'].ffill()
-                bb_bandwidth_sma20 = ta.sma(bb_bandwidth, length=20)
-                indicators['bb_squeeze'] = bb_bandwidth < bb_bandwidth_sma20
+                indicators['bb_lower'] = bb['BBL_20_2.0_2.0'].ffill()
+                
+                bbw = (indicators['bb_upper'] - indicators['bb_lower']) / sma20
+                bbw_sma50 = ta.sma(bbw, length=50)
+                indicators['bbw_breakout_valid'] = (bbw > (1.5 * bbw_sma50)).fillna(True)
+                
+                kc_upper = sma20 + 1.5 * atr1m
+                kc_lower = sma20 - 1.5 * atr1m
+                
+                # Squeeze ON: BB inside KC
+                sqz_on = (indicators['bb_upper'] < kc_upper) & (indicators['bb_lower'] > kc_lower)
+                # Squeeze was recently on (last 15 minutes) but is now expanding
+                sqz_recent = sqz_on.shift(1).rolling(15).max() > 0
+                indicators['bb_squeeze'] = sqz_recent & (~sqz_on)
             else:
                 indicators['bb_upper'] = df_1m['close'] * 1.1
                 indicators['bb_squeeze'] = pd.Series(False, index=df_1m.index)
+                indicators['bbw_breakout_valid'] = pd.Series(True, index=df_1m.index)
             indicators['bb_squeeze'] = indicators['bb_squeeze'].fillna(False)
                 
             # Calculate 1h indicators
             df_1h = df_1m.resample('1h', on='timestamp').agg({
-                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                'high': 'max', 'low': 'min', 'close': 'last'
             }).dropna().reset_index()
 
             if len(df_1h) >= 15:
                 df_1h['atr'] = ta.atr(df_1h['high'], df_1h['low'], df_1h['close'], length=14)
             else:
                 df_1h['atr'] = df_1h['close'] * 0.01
+                
+            # Dynamic Trend Efficiency Filter (Chop Filter)
+            if len(df_1h) >= 24:
+                net_change = df_1h['close'].diff(24).abs()
+                sum_atr = df_1h['atr'].rolling(24).sum()
+                df_1h['er'] = (net_change / sum_atr).fillna(1.0)
+            else:
+                df_1h['er'] = 1.0
 
             df_1h['timestamp'] = df_1h['timestamp'] + pd.Timedelta(hours=1)
             df_1h_idx = df_1h.set_index('timestamp')
@@ -70,6 +92,7 @@ class PortfolioBacktester:
                 indicators['btc_safe'] = pd.DataFrame({'uptrend_15m': [True]*len(df_1m)}, index=df_1m_idx.index)
 
             indicators['atr'] = df_1h_idx['atr'].reindex(df_1m_idx.index).ffill().bfill().fillna(df_1m['close'] * 0.01)
+            indicators['er'] = df_1h_idx['er'].reindex(df_1m_idx.index).ffill().bfill().fillna(1.0)
 
             self.precalculated_indicators[symbol] = indicators
 
@@ -105,10 +128,12 @@ class PortfolioBacktester:
                 'high': df['high'].values,
                 'low': df['low'].values,
                 'atr': ind['atr'].values,
+                'er': ind['er'].values,
                 'sma30': ind['sma30'].values,
                 'bb_upper': ind['bb_upper'].values,
                 'bb_squeeze': ind['bb_squeeze'].values,
-                'btc_uptrend_15m': ind['btc_safe']['uptrend_15m'].values
+                'btc_uptrend_15m': ind['btc_safe']['uptrend_15m'].values,
+                'bbw_breakout_valid': ind['bbw_breakout_valid'].values
             }
 
                 # Simulation Loop
@@ -145,7 +170,6 @@ class PortfolioBacktester:
             recent_fails = [t for t in failed_trades_history if (ts - t).total_seconds() <= 3600]
             failed_trades_history = recent_fails
             
-            idx_global = len(equity_history) # just a counter if needed, but ts is better
             # Note: idx is per pair, we need to block entries globally. 
             # We will use circuit_breaker_until_ts
             
@@ -183,7 +207,6 @@ class PortfolioBacktester:
                 s_data = np_data[s]
                 price = s_data['close'][idx]
                 atr = s_data['atr'][idx]
-                btc_uptrend_15m = s_data['btc_uptrend_15m'][idx]
 
                 if pos['qty'] > 0:
                     high_price = s_data['high'][idx]
@@ -205,7 +228,10 @@ class PortfolioBacktester:
                     if pos.get('setup') == 'Trend_BB_Squeeze':
                         # Trailing stop based on 3.0 * ATR
                         mult = params.get('ATR_SL_MULT', 3.0)
-                        trail_dist_price = max(mult * atr, high_price * params.get('SL_MIN_PCT', 0.015))
+                        if not s_data['btc_uptrend_15m'][idx]:
+                            mult = mult * 0.5
+                        entry_atr = pos.get('entry_atr', atr)
+                        trail_dist_price = max(mult * entry_atr, high_price * params.get('SL_MIN_PCT', 0.015))
                         pos['sl'] = max(pos['sl'], high_price - trail_dist_price)
                     else:
                         if high_profit_pct > trail_trigger:
@@ -254,8 +280,12 @@ class PortfolioBacktester:
                     sma30 = s_data['sma30'][idx]
                     bb_upper = s_data['bb_upper'][idx]
                     bb_squeeze = s_data['bb_squeeze'][idx]
+                    er = s_data['er'][idx]
                     
-                    if price > sma30 and bb_squeeze and price > bb_upper:
+                    min_er = params.get('MIN_EFFICIENCY_RATIO', 0.3)
+                    breakout_mult = params.get('BREAKOUT_VOL_MULT', 1.5)
+                    
+                    if price > sma30 and bb_squeeze and price > bb_upper + (atr * breakout_mult) and er > min_er and s_data['bbw_breakout_valid'][idx]:
                         setup = "Trend_BB_Squeeze"
                             
                     if setup:
@@ -272,11 +302,11 @@ class PortfolioBacktester:
                             elif active_count >= 3: size_strength = params.get('SCALE_3_POS', 0.4)
                             
                             risk_pct = (params.get('BASE_RISK_PERCENT', 2.0) / 100.0) * size_strength
+                            if not s_data['btc_uptrend_15m'][idx]:
+                                risk_pct = risk_pct * 0.5
                             risk_usd = current_equity * risk_pct
 
                             mult = params.get('ATR_SL_MULT', 2.5)
-                            if setup == "V148_Downtrend_Scalp":
-                                mult = min(mult, 1.5) # tighter SL
                             sl_min_pct = params.get('SL_MIN_PCT', 0.015)
                             sl_max_pct = params.get('SL_MAX_PCT', 0.030)
                             sl_dist_price = mult * atr
@@ -298,10 +328,7 @@ class PortfolioBacktester:
                                 pos['time'] = idx
                                 pos['setup'] = setup
                                 pos['entry_atr'] = atr
-                                if setup == "V148_Downtrend_Scalp":
-                                    pos['tp'] = 0.02 # 2% TP for scalp
-                                else:
-                                    pos['tp'] = params.get('TAKE_PROFIT', 0.0)
+                                pos['tp'] = params.get('TAKE_PROFIT', 0.0)
                                 balance -= trade_amount
                                 active_count += 1
 
