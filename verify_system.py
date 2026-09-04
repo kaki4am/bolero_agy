@@ -108,7 +108,7 @@ def check_backtester():
         })
         
         tester.pair_data = {'TESTUSDT': {'1m': mock_df_1m, '15m': mock_df_15m}}
-        tester.precalculate_all(search_space)
+        tester.precalculate_all()
         results = tester.run(config_params)
         
         print(f"  [PASS] Backtester finished test run. Profit: {results}%")
@@ -240,7 +240,7 @@ async def run_single_stress(client, tester, params, period, symbols):
         
         tester.pair_data[s] = {'1m': df_1m, '15m': df_15m}
 
-    tester.precalculate_all({k: [v] for k, v in params.items()})
+    tester.precalculate_all()
     return tester.run(params)
 
 def check_historical_stress_tests():

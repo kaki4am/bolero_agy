@@ -1,10 +1,10 @@
 {
-    "RISK_MULTIPLIER": 0.8,
-    "SL_MULT_OFFSET": -0.1,
+    "RISK_MULTIPLIER": 1.0,
+    "SL_MULT_OFFSET": 0.0,
     "VOL_SPIKE_MULT_OFFSET": 0.0,
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
-    "rationale": "BTC is experiencing a mild pullback (-1.75%), prompting a slight reduction in position sizing and tighter stops per the decision matrix.",
+    "rationale": "BTC is up over 4% reclaiming $80K, presenting stable bullish conditions, so maintaining default full risk parameters.",
     "confidence": 0.95,
     "learning_to_persist": ""
 }

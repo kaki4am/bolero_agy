@@ -104,6 +104,8 @@ def main():
                             sma = pair_inds.get('sma30', 0)
                             bbu = pair_inds.get('bb_upper', 0)
                             pnl_text += f"  ↳ Squeeze: {sqz} | SMA30: {sma:.4f} | BBU: {bbu:.4f}\n"
+                            bbw = "YES" if pair_inds.get("bbw_breakout_valid") else "NO"
+                            pnl_text += f"  ↳ BBW Valid: {bbw}\n"
                             pnl_text += f"  ↳ ER: {er:.2f} | 1h ATR: {atr:.4f} | BTC 15m: {bu}\n"
                 
 

@@ -47,7 +47,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V150 Trend-Filtered BB Squeeze Breakout
+        # Strategy V151 Trend-Filtered BB Squeeze Breakout
         self.config = {
             'MIN_VOLATILITY': 0.001,
             'BASE_RISK_PERCENT': 4.611576631674215,
@@ -90,14 +90,10 @@ class TradingBot:
                         overrides = json.load(f)
                     risk_mult = overrides.get('RISK_MULTIPLIER', 1.0)
                     sl_offset = overrides.get('SL_MULT_OFFSET', 0.0)
-                    
-                    if hasattr(self, 'market_trend') and not self.market_trend.get('btc_uptrend_15m', True):
-                        risk_mult = risk_mult * 0.5
-                        sl_offset = min(sl_offset, -0.5)
-                        
                     self.config['BASE_RISK_PERCENT'] = self.base_config['BASE_RISK_PERCENT'] * risk_mult
                     self.config['ATR_SL_MULT'] = self.base_config['ATR_SL_MULT'] + sl_offset
                     self.config['PORTFOLIO_EJECT'] = self.base_config['PORTFOLIO_EJECT'] + overrides.get('PORTFOLIO_EJECT_OFFSET', 0.0)
+                    self.config['VOL_SPIKE_MULTIPLIER'] = self.base_config.get('VOL_SPIKE_MULTIPLIER', 1.5) + overrides.get('VOL_SPIKE_MULT_OFFSET', 0.0)
                     print(f"Loaded config with tactical overrides: Risk Mult={risk_mult}, SL Offset={sl_offset}")
                 except Exception as oe:
                     print(f"Error loading tactical overrides: {oe}")
@@ -318,7 +314,7 @@ class TradingBot:
             self.market_trend = {
                 'btc_uptrend_15m': btc_cp_15m > ema200_15m
             }
-            print("--- Market Status Update (Strategy V150 Trend-Filtered BB Squeeze Breakout) ---")
+            print("--- Market Status Update (Strategy V151 Trend-Filtered BB Squeeze Breakout) ---")
             print(f"BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -336,10 +332,14 @@ class TradingBot:
                         cache_data.update({'atr_1h': atr_1h.iloc[-1]})
                         
                     if len(close_1h) >= 25 and 'atr_1h' in cache_data:
-                        net_change = abs(close_1h.iloc[-1] - close_1h.iloc[-25])
-                        sum_atr = atr_1h.iloc[-24:].sum()
-                        er = net_change / sum_atr if sum_atr > 0 else 1.0
+                        trend_24h_pct = abs(close_1h.iloc[-1] - close_1h.iloc[-25]) / close_1h.iloc[-25]
+                        atr_pct = atr_1h / close_1h
+                        avg_hourly_range_pct = atr_pct.iloc[-24:].mean()
+                        er = trend_24h_pct / avg_hourly_range_pct if avg_hourly_range_pct > 0 else 1.0
+                        
                         cache_data.update({'er': er})
+                        cache_data.update({'vol_1h': atr_pct.iloc[-1]})
+                        cache_data.update({'vol_24h': avg_hourly_range_pct})
                         
                     if cache_data:
                         self.ema_cache[p] = cache_data
@@ -523,8 +523,18 @@ class TradingBot:
 
                     take_profit = self.config.get('TAKE_PROFIT', 0.0)
                     
-                    if hold_seconds > 86400: # 24h limit
-                        print(f"⏰ TIME EXIT: {pair} 24h limit reached")
+                    max_hold_seconds = 86400 # 24h limit
+                    
+                    ema_data = self.ema_cache.get(pair, {})
+                    vol_1h = ema_data.get('vol_1h', 0.0)
+                    vol_24h = ema_data.get('vol_24h', 0.0)
+                    
+                    vol_spike_mult = self.config.get('VOL_SPIKE_MULTIPLIER', 1.5)
+                    if vol_1h > (vol_spike_mult * vol_24h) and profit_pct < 0:
+                        max_hold_seconds = 43200 # 12h limit
+                        
+                    if hold_seconds > max_hold_seconds:
+                        print(f"⏰ TIME EXIT: {pair} {max_hold_seconds//3600}h limit reached")
                         await self.execute_trade(pair, 'SELL')
                     elif take_profit > 0 and profit_pct >= take_profit:
                         print(f"💰 TAKE PROFIT: {pair} reached TP target")
@@ -644,7 +654,8 @@ class TradingBot:
             'sma30': float(sma30),
             'bb_upper': float(bb_upper),
             'bb_squeeze': bool(bb_squeeze),
-            'btc_uptrend': bool(btc_uptrend_15m)
+            'btc_uptrend': bool(btc_uptrend_15m),
+            'bbw_breakout_valid': bool(bbw_breakout_valid)
         }
 
         # Strategy Trend BB Squeeze
@@ -712,6 +723,8 @@ class TradingBot:
                     total_eq = getattr(self, 'last_total_equity', 1000.0)
                 if side == 'BUY':
                     risk_pct = (self.config['BASE_RISK_PERCENT'] / 100.0) * strength
+                    if hasattr(self, 'market_trend') and not self.market_trend.get('btc_uptrend_15m', True):
+                        risk_pct *= 0.5
                     risk_usd = total_eq * risk_pct
                     cp = self.data_1m[pair]['close'].iloc[-1]
                     
@@ -780,7 +793,7 @@ class TradingBot:
                 
                 config_snapshot = json.dumps(self.config)
                 await asyncio.to_thread(log_trade, pair, side, ep, eq, total_fee_usdt, 'USDT', config_snapshot)
-                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V150', 'entry_atr': entry_atr}
+                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V151', 'entry_atr': entry_atr}
                 else:
                     # Track if this was a winning or losing trade for adaptive cooldown (per-pair)
                     entry_price = self.positions[pair].get('entry_price', ep)

@@ -12,8 +12,8 @@ class PortfolioBacktester:
         self.btc_trend_aligned = None 
 
 
-    def precalculate_all(self, search_space, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V150 Indicators...")
+    def precalculate_all(self, status_callback=None):
+        if status_callback: status_callback("Calculating Strategy V151 Indicators...")
         total = len(self.pair_data)
         
         # Pre-align BTC Trend to 1m resolution
@@ -75,11 +75,16 @@ class PortfolioBacktester:
                 
             # Dynamic Trend Efficiency Filter (Chop Filter)
             if len(df_1h) >= 24:
-                net_change = df_1h['close'].diff(24).abs()
-                sum_atr = df_1h['atr'].rolling(24).sum()
-                df_1h['er'] = (net_change / sum_atr).fillna(1.0)
+                trend_24h_pct = df_1h['close'].diff(24).abs() / df_1h['close'].shift(24)
+                avg_hourly_range_pct = (df_1h['atr'] / df_1h['close']).rolling(24).mean()
+                df_1h['er'] = (trend_24h_pct / avg_hourly_range_pct).fillna(1.0)
+                
+                df_1h['volatility_1h'] = df_1h['atr'] / df_1h['close']
+                df_1h['volatility_24h'] = avg_hourly_range_pct
             else:
                 df_1h['er'] = 1.0
+                df_1h['volatility_1h'] = 0.01
+                df_1h['volatility_24h'] = 0.01
 
             df_1h['timestamp'] = df_1h['timestamp'] + pd.Timedelta(hours=1)
             df_1h_idx = df_1h.set_index('timestamp')
@@ -93,6 +98,8 @@ class PortfolioBacktester:
 
             indicators['atr'] = df_1h_idx['atr'].reindex(df_1m_idx.index).ffill().bfill().fillna(df_1m['close'] * 0.01)
             indicators['er'] = df_1h_idx['er'].reindex(df_1m_idx.index).ffill().bfill().fillna(1.0)
+            indicators['volatility_1h'] = df_1h_idx['volatility_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0.01)
+            indicators['volatility_24h'] = df_1h_idx['volatility_24h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0.01)
 
             self.precalculated_indicators[symbol] = indicators
 
@@ -133,7 +140,9 @@ class PortfolioBacktester:
                 'bb_upper': ind['bb_upper'].values,
                 'bb_squeeze': ind['bb_squeeze'].values,
                 'btc_uptrend_15m': ind['btc_safe']['uptrend_15m'].values,
-                'bbw_breakout_valid': ind['bbw_breakout_valid'].values
+                'bbw_breakout_valid': ind['bbw_breakout_valid'].values,
+                'volatility_1h': ind['volatility_1h'].values,
+                'volatility_24h': ind['volatility_24h'].values
             }
 
                 # Simulation Loop
@@ -248,9 +257,17 @@ class PortfolioBacktester:
                     elif take_profit > 0 and high_profit_pct >= take_profit:
                         exit_reason = "TakeProfit"
                         exit_price = pos['entry_price'] * (1.0 + take_profit) * (1.0 - slippage_pct)
-                    elif (idx - pos['time']) > 1440:  # 24h time-based exit
-                        exit_reason = "TimeExit"
-                        exit_price = price * (1.0 - slippage_pct)
+                    else:
+                        current_vol = s_data['volatility_1h'][idx]
+                        rolling_vol = s_data['volatility_24h'][idx]
+                        max_hold_time = 1440
+                        vol_spike_mult = params.get('VOL_SPIKE_MULTIPLIER', 1.5)
+                        if current_vol > (vol_spike_mult * rolling_vol) and high_profit_pct < 0:
+                            max_hold_time = 720
+                            
+                        if (idx - pos['time']) > max_hold_time:
+                            exit_reason = "TimeExit"
+                            exit_price = price * (1.0 - slippage_pct)
 
                     if exit_reason:
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100

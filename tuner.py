@@ -31,7 +31,7 @@ SEARCH_SPACE = {
     'SCALE_1_POS': [0.8, 1.0],
     'SCALE_2_POS': [0.6, 0.8],
     'SCALE_3_POS': [0.4, 0.6],
-    'MIN_EFFICIENCY_RATIO': [0.2, 0.3, 0.4],
+    'MIN_EFFICIENCY_RATIO': [0.8, 1.0, 1.2, 1.5],
     'BREAKOUT_VOL_MULT': [0.05, 0.1, 0.2, 0.3]
 }
 
@@ -239,8 +239,8 @@ async def optimize():
     await client.close_connection()
 
     status["status"] = "Pre-calculating Indicators..."
-    bt_train.precalculate_all(SEARCH_SPACE, status_callback=lambda msg: log_event(status, f"Train: {msg}"))
-    bt_test.precalculate_all(SEARCH_SPACE, status_callback=lambda msg: log_event(status, f"Test: {msg}"))
+    bt_train.precalculate_all(status_callback=lambda msg: log_event(status, f"Train: {msg}"))
+    bt_test.precalculate_all(status_callback=lambda msg: log_event(status, f"Test: {msg}"))
 
     status["status"] = "Running Bayesian Optimization (Optuna)"
     log_event(status, "Simulation started. Running 100 trials on In-Sample data.")

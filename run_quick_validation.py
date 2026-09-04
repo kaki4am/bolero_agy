@@ -39,10 +39,9 @@ def main():
             
         tester = PortfolioBacktester(symbols=list(cached['pair_data'].keys()))
         tester.pair_data = cached['pair_data']
-        tester.btc_df = cached.get('btc_df')
         tester.btc_15m = cached.get('btc_15m')
             
-        tester.precalculate_all(params)
+        tester.precalculate_all()
         res = tester.run(params)
         print(f"{res:.4f}")
     except Exception:
