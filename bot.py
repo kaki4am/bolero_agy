@@ -3,6 +3,7 @@ import os
 import json
 import sqlite3
 import time
+import datetime
 import math
 import pandas as pd
 import pandas_ta as ta
@@ -47,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V151 Trend-Filtered BB Squeeze Breakout
+        # Strategy V152 Trend-Filtered BB Squeeze Breakout
         self.config = {
             'MIN_VOLATILITY': 0.001,
             'BASE_RISK_PERCENT': 4.611576631674215,
@@ -176,7 +177,7 @@ class TradingBot:
                        'FETUSDT', 'INJUSDT', 'NEARUSDT', 'DOTUSDT', 'FILUSDT', 'LDOUSDT', 'XECUSDT', 'SHIBUSDT', 'DODOUSDT',
                        'WLDUSDT', 'ADAUSDT', 'LINKUSDT', 'XRPUSDT', 'LTCUSDT',
                        'HFTUSDT', 'PEOPLEUSDT', 'ONGUSDT', 'SYNUSDT', 'COTIUSDT', 'CRVUSDT',
-                       'XAUTUSDT', 'QQQBUSDT']
+                       'XAUTUSDT', 'QQQBUSDT', 'MITOUSDT', 'MARSCOINUSDT']
         candidates = []
         for p in usdt_pairs:
             symbol = p['symbol']
@@ -314,7 +315,7 @@ class TradingBot:
             self.market_trend = {
                 'btc_uptrend_15m': btc_cp_15m > ema200_15m
             }
-            print("--- Market Status Update (Strategy V151 Trend-Filtered BB Squeeze Breakout) ---")
+            print("--- Market Status Update (Strategy V152 Trend-Filtered BB Squeeze Breakout) ---")
             print(f"BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -390,43 +391,45 @@ class TradingBot:
                 conn.close()
                 return df
                 
-            df = await asyncio.to_thread(read_db)
-            for _, row in df.iterrows():
-                pair = row['pair']
-                asset = pair.replace('USDT', '')
-                if row['side'] == 'BUY' and balances.get(asset, 0) > 0:
-                    # Sync with actual quantity from Binance
-                    actual_qty = balances.get(asset, 0)
-                    
-                    fallback_time = time.time()
-                    try:
-                        if 'timestamp' in row and pd.notna(row['timestamp']):
-                            dt = pd.to_datetime(row['timestamp'])
-                            if dt.tzinfo is None:
-                                dt = dt.tz_localize('UTC')
-                            fallback_time = dt.timestamp()
-                    except:
-                        pass
-                    
-                    if pair in cached_positions:
-                        cache = cached_positions[pair]
+            db_df = None
+            
+            for asset, actual_qty in balances.items():
+                pair = f"{asset}USDT"
+                
+                if pair in cached_positions:
+                    cache = cached_positions[pair]
+                    self.positions[pair] = {
+                        'entries': 1,
+                        'entry_price': cache.get('entry_price'),
+                        'qty': actual_qty,
+                        'max_p': cache.get('max_p', cache.get('entry_price')),
+                        'sl': cache.get('sl'),
+                        'time': cache.get('time', time.time()),
+                        'setup': cache.get('setup'),
+                        'entry_atr': cache.get('entry_atr')
+                    }
+                    print(f"Synced {pair} from cache. SL: {self.positions[pair]['sl']:.6f}")
+                else:
+                    if db_df is None:
+                        db_df = await asyncio.to_thread(read_db)
+                        
+                    row = db_df[db_df['pair'] == pair]
+                    if not row.empty and row.iloc[0]['side'] == 'BUY':
+                        r = row.iloc[0]
+                        fallback_time = time.time()
+                        try:
+                            if 'timestamp' in r and pd.notna(r['timestamp']):
+                                dt = pd.to_datetime(r['timestamp'])
+                                if dt.tzinfo is None:
+                                    dt = dt.tz_localize('UTC')
+                                fallback_time = dt.timestamp()
+                        except: pass
+                        
                         self.positions[pair] = {
-                            'entries': 1,
-                            'entry_price': cache.get('entry_price', row['price']),
-                            'qty': actual_qty,
-                            'max_p': cache.get('max_p', row['price']),
-                            'sl': cache.get('sl', row['price'] * 0.98),
-                            'time': cache.get('time', fallback_time),
-                            'setup': cache.get('setup'),
-                            'entry_atr': cache.get('entry_atr')
+                            'entries': 1, 'entry_price': r['price'], 'qty': actual_qty,
+                            'max_p': r['price'], 'sl': r['price'] * 0.98, 'time': fallback_time
                         }
-                        print(f"Synced {pair} from DB and restored trailing stop-loss from cache. SL: {self.positions[pair]['sl']:.6f}")
-                    else:
-                        self.positions[pair] = {
-                            'entries': 1, 'entry_price': row['price'], 'qty': actual_qty,
-                            'max_p': row['price'], 'sl': row['price'] * 0.98, 'time': fallback_time
-                        }
-                        print(f"Synced {pair} from DB (no cache). Fallback Entry: {row['price']}, Qty: {actual_qty}")
+                        print(f"Synced {pair} from DB (no cache). Fallback Entry: {r['price']}, Qty: {actual_qty}")
             self.save_active_positions()
         except Exception as e:
             print(f"Sync error: {e}")
@@ -614,7 +617,7 @@ class TradingBot:
             if bb is not None and not bb.empty:
                 bb_upper = bb['BBU_20_2.0_2.0'].iloc[-1]
                 
-                sma20 = ta.sma(c, length=20)
+                sma20 = bb['BBM_20_2.0_2.0']
                 
                 bbw = (bb['BBU_20_2.0_2.0'] - bb['BBL_20_2.0_2.0']) / sma20
                 bbw_sma50 = ta.sma(bbw, length=50)
@@ -691,6 +694,10 @@ class TradingBot:
                 elif active_count == 2: size_strength = self.config.get('SCALE_2_POS', 0.6)
                 elif active_count >= 3: size_strength = self.config.get('SCALE_3_POS', 0.4)
                 
+                dow = datetime.datetime.utcnow().weekday()
+                if dow == 4:
+                    size_strength *= 1.5
+                    
                 if await self.execute_trade(pair, 'BUY', strength=size_strength, entry_atr=atr, setup_name=setup):
                     pass
         else:
@@ -733,6 +740,7 @@ class TradingBot:
                     sl_min_pct = self.config.get('SL_MIN_PCT', 0.015)
                     sl_max_pct = self.config.get('SL_MAX_PCT', 0.030)
                     sl_dist = (mult * entry_atr) if entry_atr else (cp * 0.02)
+                    # sl_max_pct
                     sl_dist = min(max(sl_dist, cp * sl_min_pct), cp * sl_max_pct)
                     
                     amt = (risk_usd / sl_dist) * cp
@@ -793,7 +801,7 @@ class TradingBot:
                 
                 config_snapshot = json.dumps(self.config)
                 await asyncio.to_thread(log_trade, pair, side, ep, eq, total_fee_usdt, 'USDT', config_snapshot)
-                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V151', 'entry_atr': entry_atr}
+                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V152', 'entry_atr': entry_atr}
                 else:
                     # Track if this was a winning or losing trade for adaptive cooldown (per-pair)
                     entry_price = self.positions[pair].get('entry_price', ep)

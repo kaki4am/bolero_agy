@@ -1,8 +1,15 @@
-**System & Risk Analyst Report**
+Based on the current health and performance data, here are the structural and risk management proposals:
 
-Based on the provided health data, 24H performance, and logs, here are the structural and risk management proposals:
+**1. Portfolio Guards (Circuit Breaker & Market Filter)**
+*   **Halt / Reduce Exposure:** The BTC 15m trend is DOWN and the past 24H PnL is severely negative (-$12.09). Pause new trades or reduce the `Risk Mult` further (e.g., from 0.8 to 0.2 or 0.0) until the broader market trend turns positive.
+*   **Daily Max Drawdown:** Implement a hard daily drawdown limit (e.g., halt all trading for 24h if daily PnL hits -5%). 
 
-1. **Address Prolonged Risk Suppression (Trade Stagnation):** The system has not traded in over 8.5 hours because tactical overrides are consistently applying `Risk Mult=0.0` due to the "BTC 15m Trend: DOWN". Instead of a binary risk-off switch, implement a **graduated risk-scaling model** (e.g., reducing risk to 0.25 or 0.5) to allow for selective trading in downtrends without complete system stagnation.
-2. **Implement Dynamic Time Stops:** The worst trade (XLMUSDT) resulted in an 8.34% loss after being held for over 182 hours (7.5 days). Introduce a **maximum holding duration (time stop)** to automatically cut stagnant or slow-bleeding trades, freeing up capital for better opportunities.
-3. **Tighten Outlier Risk Controls:** The 24H negative PNL (-$4.86) was entirely driven by an outsized absolute loss on TWTUSDT (-$4.92 in 9 hours). Verify that the newly implemented dynamic volatility filters are properly narrowing the Stop Loss (SL) parameters for highly volatile pairs to prevent single trades from wiping out cumulative daily gains. 
-4. **Aggressive Trailing Take-Profit in Bearish Regimes:** Several winning trades (e.g., HBAR, ICP, FORM) captured marginal gains (0.6% - 1.7%). Because the broader market trend is bearish, shift to a tighter, more aggressive trailing stop to lock in profits earlier before counter-trend bounces revert.
+**2. Stop-Loss & Risk Adjustments**
+*   **Tighten Hard Stop-Loss:** The worst trade (LPTUSDT) lost -8.44%. Cap the absolute maximum stop-loss per trade at -2.5% or -3.0% to prevent catastrophic single-trade drawdowns.
+*   **Trailing Stop Sensitivity:** Breakout strategies in downtrends often result in false breakouts. Tighten the trailing stop activation threshold to lock in profits earlier before price reverses.
+
+**3. Take-Profit & Risk-Reward**
+*   **Asymmetric R:R Requirement:** Your losers are currently far outpacing your winners (e.g., -8.44% loss vs +0.40% gain). Enforce a minimum Risk:Reward ratio before entry, or scale out of positions in fractions (e.g., sell 50% at +1% profit) to ensure winning trades cover the costs of false breakouts.
+
+**4. Operational / Structural**
+*   **Restricted Pairs Update:** Add `MITOUSDT` and `MARSCOINUSDT` to the restricted pairs list immediately to prevent repeated API `-2010` (symbol not permitted) errors.

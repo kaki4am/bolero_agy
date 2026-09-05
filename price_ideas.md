@@ -1,20 +1,19 @@
-### Market Data Analysis
-- **Trend & Volatility Correlation**: All pairs exhibit strong positive 30-day trends (7.8% - 35.9%). Volatility and average daily ranges scale inversely with market cap (BTC is lowest at 11.9% daily range / 0.4% hourly vol; NEAR is highest at 30.6% daily range / 0.89% hourly vol).
-- **Compression & Breakout Potential**: Bollinger Band squeeze counts are exceptionally high on larger caps (BTC: 566, ETH: 492) and lower on higher-volatility altcoins (NEAR: 155). This indicates structural consolidation in majors, ripe for explosive momentum, while altcoins are already experiencing expanded volatility.
+**Market Data Analysis:**
+* **Volatility vs. Squeeze Correlation:** Assets with lower hourly volatility and daily ranges (BTC, ETH) exhibit significantly more Bollinger Band (BB) squeezes (541 and 471, respectively) than high-volatility assets like NEAR (115). This indicates BTC and ETH spend more time in consolidation, while NEAR/LINK are in persistent trending or volatile states.
+* **Strong Directional Bias:** All assets show strong 30-day upward trends (23% to 43%), meaning counter-trend strategies will likely underperform and long-biased trend-following or breakout strategies will excel.
 
-### Proposed Dynamic Signals & Filters (Adhering to Anti-Curve-Fitting Constraints)
+**Proposed Signals & Filters:**
 
-**1. Dynamic Volatility-Scaled Breakout (Entry Filter)**
-*   **Rationale**: High BB squeeze counts suggest breakout strategies are viable, but static thresholds fail across different volatility profiles. We must use a dynamic threshold to validate momentum relative to the asset's own baseline.
-*   **Indicators**: Bollinger Band Width (BBW) and a Simple Moving Average (SMA) of the BBW.
-*   **Logic**: Only permit breakout entries when the current volatility exceeds its recent historical average. 
-    *   `Entry Condition`: `Current BBW > (1.5 * SMA(BBW, 50))`
-    *   *Effect*: Automatically adapts to each pair's inherent volatility without requiring static pair exclusions or hardcoded percentage thresholds.
+**1. Squeeze-Breakout Entry Signal (Targeting BTC/ETH)**
+Capitalizes on the frequent consolidation periods observed in the major cap assets.
+* **Logic:** Enter LONG when the price closes above the Upper Bollinger Band following a period of compression.
+* **Indicators:** Bollinger Bands (20, 2), Bollinger Band Width (BBW).
+* **Condition:** `Close > Upper BB(20, 2)` AND `BBW < SMA(BBW, 20)`.
 
-**2. ATR-Normalized Dynamic Trailing Stop (Exit Signal)**
-*   **Rationale**: A fixed percentage stop-loss will prematurely stop out highly volatile pairs (like NEAR) while taking too long to cut losses on stable pairs (like BTC).
-*   **Indicators**: Average True Range (ATR) over a 14-period window.
-*   **Logic**: Implement a trailing stop calculated as a multiple of the ATR, dynamically widening for volatile assets and tightening for stable ones.
-    *   `Long Exit Condition`: `Price < (Highest High since Entry - (Multiplier * ATR(14)))`
-    *   `Multiplier`: `3.0` (Standard baseline, dynamically scales since ATR inherently expands on pairs with higher `avg_daily_range_pct`).
-    *   *Effect*: Allows high-volatility trends (like SOL and LINK) room to breathe while securely locking in profits on lower-volatility majors, avoiding the need to overfit exits per pair.
+**2. Volatility-Adjusted Trailing Stop Exit (Targeting SOL/LINK/NEAR)**
+Addresses the high daily ranges (21%-32%) and strong trends (28%-43%) to avoid premature exits during high-volatility pullbacks.
+* **Logic:** Use an Average True Range (ATR) trailing stop that widens during strong trends and tightens in chop.
+* **Indicators:** Average True Range (ATR, 14), Average Directional Index (ADX, 14).
+* **Condition:** 
+  * If `ADX(14) > 25` (Strong Trend): Trail stop at `Highest High (20) - (3 * ATR(14))`
+  * If `ADX(14) <= 25` (Weak Trend): Trail stop at `Highest High (20) - (1.5 * ATR(14))`

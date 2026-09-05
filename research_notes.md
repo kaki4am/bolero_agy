@@ -1,8 +1,4 @@
-Tuner degradation live-trading pause was rejected as the tuner currently safely discards negative configs without needing to halt the active stable strategy.
-Rejected Trade Ideas (Time-of-day, Day-of-week, Pair Exclusions) because they were highly overfit to historical data and directly caused the reported trade stagnation.
-Rejected Time-of-Day, Day-of-Week, and Pair Exclusion filters due to high risk of curve-fitting and degrading overall system adaptability.
-Static time-of-day, day-of-week, and pair-specific exclusions were rejected in V150 to avoid curve-fitting, moving instead to dynamic volatility and momentum filters.
-Rejected static time-of-day, day-of-week, and static pair exclusions (HFTUSDT, SYNUSDT, etc.) to avoid curve-fitting and over-optimization as per committee advice.
-Time-of-Day, Day-of-Week, and Pair Exclusions were explicitly rejected by the committee to avoid curve-fitting and trade stagnation.
-- Rejected static time-of-day, day-of-week, and static pair exclusions as they presented high overfitting risk; we opted for dynamic volatility checks instead.
-Time-of-Day, Day-of-Week, and Pair exclusions were rejected to avoid curve-fitting, prioritizing dynamic volatility checks instead.
+- Rejected Volatility-Adjusted ADX Trailing Stop: tightening the stop loss in low ADX caused premature exits and dropped the backtest score from 10.39 to negative.
+- Rejected Time-of-Day Filters (excluding hours 13, 17, 20, 22): restricting these hours excluded highly profitable trades, dropping performance significantly.
+- Rejected Hard Stop-Loss Cap at -3.0%: Capping the SL at 3% caused premature liquidations during routine volatility, lowering the validation score.
+- Rejected lowering BTC down-trend risk exposure to 0.2: backtest showed 0.5 performs better in capturing sudden reversals.

@@ -13,7 +13,7 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V151 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V152 Indicators...")
         total = len(self.pair_data)
         
         # Pre-align BTC Trend to 1m resolution
@@ -37,11 +37,11 @@ class PortfolioBacktester:
             indicators = {}
             
             indicators['sma30'] = ta.sma(df_1m['close'], length=30)
-            sma20 = ta.sma(df_1m['close'], length=20)
-            atr1m = ta.atr(df_1m['high'], df_1m['low'], df_1m['close'], length=14)
             bb = ta.bbands(df_1m['close'], length=20, std=2.0)
+            atr1m = ta.atr(df_1m['high'], df_1m['low'], df_1m['close'], length=14)
             
             if bb is not None and not bb.empty:
+                sma20 = bb['BBM_20_2.0_2.0'].ffill()
                 indicators['bb_upper'] = bb['BBU_20_2.0_2.0'].ffill()
                 indicators['bb_lower'] = bb['BBL_20_2.0_2.0'].ffill()
                 
@@ -202,7 +202,7 @@ class PortfolioBacktester:
                         price = np_data[s]['close'][idx]
                         exit_price = price * (1.0 - slippage_pct)
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100
-                        trades.append({'pair': s, 'pnl': pnl, 'reason': global_exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown')})
+                        trades.append({'pair': s, 'pnl': pnl, 'reason': global_exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': idx - pos['time']})
                         balance += pos['qty'] * exit_price * 0.999
                         active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0}
                 continue
@@ -273,7 +273,7 @@ class PortfolioBacktester:
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100
                         if pnl <= 0:
                             failed_trades_history.append(ts)
-                        trades.append({'pair': s, 'pnl': pnl, 'reason': exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown')})
+                        trades.append({'pair': s, 'pnl': pnl, 'reason': exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': idx - pos['time']})
                         balance += pos['qty'] * exit_price * 0.999
                         active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0}
 
@@ -318,6 +318,9 @@ class PortfolioBacktester:
                             elif active_count == 2: size_strength = params.get('SCALE_2_POS', 0.6)
                             elif active_count >= 3: size_strength = params.get('SCALE_3_POS', 0.4)
                             
+                            if ts.dayofweek == 4:
+                                size_strength *= 1.5
+                                
                             risk_pct = (params.get('BASE_RISK_PERCENT', 2.0) / 100.0) * size_strength
                             if not s_data['btc_uptrend_15m'][idx]:
                                 risk_pct = risk_pct * 0.5
@@ -327,6 +330,7 @@ class PortfolioBacktester:
                             sl_min_pct = params.get('SL_MIN_PCT', 0.015)
                             sl_max_pct = params.get('SL_MAX_PCT', 0.030)
                             sl_dist_price = mult * atr
+                            # sl_max_pct
                             sl_dist_price = min(max(sl_dist_price, price * sl_min_pct), price * sl_max_pct)
                             
                             target_qty = risk_usd / sl_dist_price
@@ -358,7 +362,7 @@ class PortfolioBacktester:
                 exit_price = final_price * (1.0 - slippage_pct)
                 final_balance += pos['qty'] * exit_price * 0.9985
                 pnl = ((exit_price / pos['entry_price']) - 1) * 100
-                trades.append({'pair': s, 'pnl': pnl, 'reason': 'EOD', 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown')})
+                trades.append({'pair': s, 'pnl': pnl, 'reason': 'EOD', 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': len(np_data[s]['close']) - 1 - pos['time']})
 
         self.trades = trades
 

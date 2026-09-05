@@ -257,7 +257,7 @@ async def optimize():
             'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
             'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 20.0),
             'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.050),
-            'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.025, 0.100),
+            'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.020, 0.030),
             'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.200),
             'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.050),
             'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),

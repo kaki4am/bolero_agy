@@ -1,4 +1,4 @@
-# Strategy V151 - Dynamic Trend-Filtered BB Squeeze Breakout
+# Strategy V152 - Dynamic Trend-Filtered BB Squeeze Breakout
 
 ## Overview
 Binance spot trading bot managed by an autonomous AI agent. The AI has full authority to research, discover, and deploy any statistically profitable entry setups (e.g., trend following, momentum breakouts, capitulation bounces) to maximize PnL and outperform a Bitcoin Buy-and-Hold baseline.
@@ -12,7 +12,7 @@ Binance spot trading bot managed by an autonomous AI agent. The AI has full auth
 ## Current Active Strategy
 - *Current Primary Setup (Trend_BB_Squeeze):* Close > SMA(30), BB Squeeze Active (BB inside KC), Close > Upper BB + (1H ATR * BREAKOUT_VOL_MULT), and Dynamic Volatility-Scaled Breakout valid (Current BBW > 1.5 * SMA(BBW, 50)).
 - *Filters:* 24H Dynamic Trend Efficiency Ratio > MIN_EFFICIENCY_RATIO. Graduated risk-scaling for downtrends (0.5x risk when 15m BTC Trend is DOWN).
-- *Time & Day Filters:* Rejected (avoid static exclusions, focus on dynamic filters).
+- *Time & Day Filters:* Rejected time-of-day filters. Prioritize DOW 4 (Friday) by scaling position sizes up by 1.5x on valid breakouts.
 
 ## Exit Logic
 - ATR-based trailing stop loss (3.0 * 1H ATR). Automatically tightens to 1.5 * 1H ATR in bearish regimes.

@@ -132,7 +132,7 @@ RISK MANAGEMENT PRINCIPLES (follow these strictly):
         overrides['RISK_MULTIPLIER'] = max(0.0, min(1.5, float(overrides.get('RISK_MULTIPLIER', 1.0))))
         overrides['SL_MULT_OFFSET'] = max(-0.5, min(0.5, float(overrides.get('SL_MULT_OFFSET', 0.0))))
         overrides['VOL_SPIKE_MULT_OFFSET'] = max(0.0, min(0.5, float(overrides.get('VOL_SPIKE_MULT_OFFSET', 0.0))))
-        overrides['PORTFOLIO_EJECT_OFFSET'] = max(-2.0, min(0.0, float(overrides.get('PORTFOLIO_EJECT_OFFSET', 0.0))))
+        overrides['PORTFOLIO_EJECT_OFFSET'] = max(0.0, min(2.0, float(overrides.get('PORTFOLIO_EJECT_OFFSET', 0.0))))
         
         # Validate blacklist_add is a list of strings
         blacklist = overrides.get('blacklist_add', [])
