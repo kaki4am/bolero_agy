@@ -1,10 +1,10 @@
 {
-    "RISK_MULTIPLIER": 0.8,
-    "SL_MULT_OFFSET": -0.1,
+    "RISK_MULTIPLIER": 1.0,
+    "SL_MULT_OFFSET": 0.0,
     "VOL_SPIKE_MULT_OFFSET": 0.0,
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
-    "rationale": "BTC is down 1.77% on macro news, triggering the mild sell-off tier to reduce risk and tighten stops.",
-    "confidence": 0.9,
+    "rationale": "BTC remains positive on the day (+0.54%) supported by record ETF inflows, keeping risk parameters at default neutral levels despite temporary NFP-induced intraday volatility.",
+    "confidence": 0.95,
     "learning_to_persist": ""
 }

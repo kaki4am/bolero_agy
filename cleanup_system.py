@@ -47,6 +47,7 @@ WHITELIST = {
     '.profile',
     '.bash_history',
     'GEMINI.md',
+    'research_notes.md',
     'verify.log',
     'strategy_evolver.log',
     'daily_opinion.html',
@@ -55,6 +56,12 @@ WHITELIST = {
     'cleanup_log.json',
     'trading-bot.service',
     'backtest-optimizer.service',
+    
+    # State and Data Files
+    'dashboard_data.json',
+    'optuna_study.db',
+    'pnl_history.json',
+    'tracked_pairs.json',
     
     # AI Manager Overrides & Logs
     'tactical_overrides.json',
