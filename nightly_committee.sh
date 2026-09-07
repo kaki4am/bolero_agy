@@ -6,6 +6,13 @@ export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/
 export HOME=/root
 export GEMINI_CLI_TRUST_WORKSPACE=true
 
+
+LOG_FILE="/root/strategy_evolver.log"
+log_event() {
+    echo "$1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
 BACKUP_DIR="/root/backups"
 mkdir -p "$BACKUP_DIR"
 
@@ -17,7 +24,7 @@ for f in *.py GEMINI.md *.json; do
 done
 
 perform_rollback() {
-    echo "CRITICAL: Committee failed or rejected changes. Rolling back..."
+    log_event "CRITICAL: Committee failed or rejected changes. Rolling back..."
     for f in *.py GEMINI.md *.json; do
         if [ -s "$BACKUP_DIR/$f.bak" ]; then
             cp "$BACKUP_DIR/$f.bak" "/root/$f"
@@ -27,12 +34,12 @@ perform_rollback() {
     systemctl restart backtest-optimizer
 }
 
-echo "========================================="
-echo "[$(date)] Starting Nightly Committee..."
-echo "========================================="
+log_event "========================================="
+log_event "[$(date)] Starting Nightly Committee..."
+log_event "========================================="
 
 # 1. Gather Data for Analysts
-echo "Gathering data for analysts..."
+log_event "Gathering data for analysts..."
 /root/venv/bin/python /root/export_report.py
 /root/venv/bin/python /root/get_db_stats.py
 DB_STATS=$(cat /root/db_stats_summary.txt 2>/dev/null)
@@ -152,7 +159,7 @@ PYEOF
 )
 
 # 2. Phase 1: Parallel Analysis
-echo "Phase 1: Starting parallel committee analysis..."
+log_event "Phase 1: Starting parallel committee analysis..."
 
 PROMPT_PRICE="You are the Price Action Analyst. Analyze the raw market data characteristics and propose 1-2 new entry/exit signals or filters that could improve the strategy.
 BASELINE: $BASELINE
@@ -189,7 +196,15 @@ wait $PID_PRICE
 wait $PID_TRADE
 wait $PID_SYSTEM
 
-echo "Phase 1 complete. Ideas generated."
+log_event "Phase 1 complete. Ideas generated."
+echo -e "\n--- Price Ideas ---" >> "$LOG_FILE"
+cat /root/price_ideas.md >> "$LOG_FILE"
+echo -e "\n--- Trade Ideas ---" >> "$LOG_FILE"
+cat /root/trade_ideas.md >> "$LOG_FILE"
+echo -e "\n--- System Ideas ---" >> "$LOG_FILE"
+cat /root/system_ideas.md >> "$LOG_FILE"
+echo -e "\n" >> "$LOG_FILE"
+
 
 # Stop heavy background tuner to save RAM during AI pipeline
 systemctl stop backtest-optimizer
@@ -220,24 +235,29 @@ INSTRUCTIONS:
 EOF
 )
 
-agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 15m0s --print "$PROMPT_ARCHITECT" > /dev/null
+log_event "Phase 2: Running Architect..."
+agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 15m0s --print "$PROMPT_ARCHITECT" > /tmp/architect_out.log 2>&1
+echo -e "\n=== Architect Thoughts & Actions ===" >> "$LOG_FILE"
+cat /tmp/architect_out.log >> "$LOG_FILE"
+echo -e "====================================\n" >> "$LOG_FILE"
 
-echo "Phase 3: Running Auditors..."
+
+log_event "Phase 3: Running Auditors..."
 bash /root/audit_coherence.sh
 bash /root/audit_hygiene.sh
 
 # 4. Verification and Backtest Gate
-echo "Phase 4: Verification and Backtest Gate..."
+log_event "Phase 4: Verification and Backtest Gate..."
 
 VERIFY_PASSED=false
 for ATTEMPT in 1 2 3; do
     VERIFY_OUTPUT=$(/root/venv/bin/python /root/verify_system.py 2>&1)
     if [ $? -eq 0 ]; then
         VERIFY_PASSED=true
-        echo "Verification passed."
+        log_event "Verification passed."
         break
     else
-        echo "Verification FAILED (attempt $ATTEMPT/3). Asking AI to fix..."
+        log_event "Verification FAILED (attempt $ATTEMPT/3). Asking AI to fix..."
         FIX_PROMPT="The code you just wrote failed verification. Fix these errors and try again. Do NOT explain, just fix the files:
 $VERIFY_OUTPUT"
         agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 5m0s --print "$FIX_PROMPT" > /dev/null
@@ -245,12 +265,12 @@ $VERIFY_OUTPUT"
 done
 
 if [ "$VERIFY_PASSED" = true ]; then
-    echo "Running backtest gate..."
+    log_event "Running backtest gate..."
     BACKTEST_RESULT=$(/root/venv/bin/python /root/run_quick_validation.py | tail -1)
     
     BASELINE_VAL=$(/root/venv/bin/python /root/run_quick_validation.py --baseline | tail -1)
 
-    echo "Baseline: ${BASELINE_VAL}% | New: ${BACKTEST_RESULT}%"
+    log_event "Baseline: ${BASELINE_VAL}% | New: ${BACKTEST_RESULT}%"
     
     PASSES=$(python3 -c "
 try:
@@ -262,24 +282,24 @@ except:
 " 2>/dev/null)
 
     if [ "$PASSES" = "yes" ]; then
-        echo "Backtest PASSED! Deploying changes..."
-        echo "[$(date)] Nightly Committee Evolved Strategy! Baseline: ${BASELINE_VAL} -> ${BACKTEST_RESULT}" >> /root/strategy_evolver.log
+        log_event "Backtest PASSED! Deploying changes..."
+        log_event "Nightly Committee Evolved Strategy! Baseline: ${BASELINE_VAL} -> ${BACKTEST_RESULT}"
         systemctl restart trading-bot
         systemctl restart backtest-optimizer
         
-        echo "Pushing new strategy to GitHub..."
+        log_event "Pushing new strategy to GitHub..."
         git -C /root add *.py GEMINI.md *.json *.md 2>/dev/null
         git -C /root commit -m "Auto-Deploy: Nightly Committee Strategy Evolution (Score: ${BACKTEST_RESULT})" 2>/dev/null
         git -C /root push origin main 2>/dev/null
     else
-        echo "Backtest gate FAILED (Score: $BACKTEST_RESULT). Rolling back."
+        log_event "Backtest gate FAILED (Score: $BACKTEST_RESULT). Rolling back."
         perform_rollback
     fi
 else
-    echo "Verification FAILED. Rolling back."
+    log_event "Verification FAILED. Rolling back."
     perform_rollback
 fi
 
 # Clean up ideas so they don't leak into next run
 rm -f /root/price_ideas.md /root/trade_ideas.md /root/system_ideas.md
-echo "Nightly Committee finished."
+log_event "Nightly Committee finished."

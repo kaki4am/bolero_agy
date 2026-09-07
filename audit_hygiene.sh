@@ -7,7 +7,7 @@ export HOME=/root
 
 echo "Gathering system files for performance & hygiene audit..."
 
-PROMPT=$(cat <<'PROMPT_EOF'
+cat <<'PROMPT_EOF' > /tmp/hygiene_prompt.md
 You are the Lead Quantitative Performance Engineer.
 Your job is to audit this autonomous trading system for "dead code", "performance leaks", and "directory hygiene", and ACTIVELY REPAIR any flaws you find.
 
@@ -20,15 +20,11 @@ INSTRUCTIONS:
 You have full access to the file system. YOU MUST USE YOUR tools (like `replace_file_content`) TO EDIT AND FIX ANY FILES that contain performance leaks or dead code. 
 Once you have applied all fixes, write a clean summary of what you repaired and why to /root/hygiene_report.md.
 PROMPT_EOF
-)
 
 for f in *.py GEMINI.md; do
     if [ -f "/root/$f" ]; then
-        PROMPT="$PROMPT
-
-=== $f ===
-$(cat /root/$f)
-"
+        echo -e "\n=== $f ===" >> /tmp/hygiene_prompt.md
+        cat "/root/$f" >> /tmp/hygiene_prompt.md
     fi
 done
 
@@ -44,7 +40,7 @@ perform_rollback() {
 }
 
 echo "Running Hygiene Auditor (this will take a few minutes)..."
-if agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 20m0s --print "$PROMPT" > /root/hygiene_report.md; then
+if agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 20m0s --print "Please read the instructions and system state from /tmp/hygiene_prompt.md and perform the requested audit." > /root/hygiene_report.md; then
     echo "Running post-audit syntax verification..."
     
     VERIFY_PASSED=false

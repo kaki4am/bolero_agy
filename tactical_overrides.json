@@ -4,7 +4,11 @@
     "VOL_SPIKE_MULT_OFFSET": 0.0,
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
-    "rationale": "BTC is effectively flat (-0.06% 24h) and supported by strong ETF inflows, justifying a return to default neutral risk parameters.",
+    "whitelist_add": [
+        "ZECUSDT",
+        "CREAMUSDT"
+    ],
+    "rationale": "BTC is consolidating flat (-0.41%), maintaining normal risk parameters, while Reddit sentiment shows intense polarization and hype around Zcash's massive rally, warranting the addition of ZEC and top gainer CREAM to the whitelist.",
     "confidence": 0.95,
-    "learning_to_persist": ""
+    "learning_to_persist": "Reddit sentiment confirms that localized altcoin breakouts driven by new institutional catalysts can generate massive decoupled volume even during flat BTC consolidation."
 }
