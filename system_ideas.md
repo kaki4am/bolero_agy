@@ -1,6 +1,10 @@
-**System & Risk Proposals:**
+Based on the provided telemetry, logs, and previous learnings, here are the structural and risk management proposals:
 
-1. **Symbol Blacklisting (Operational Risk):** Add `SOPHUSDT` and `SAHARAUSDT` to the restricted pairs blacklist immediately. The bot is attempting to trade them but failing with API Error -2010 (symbol not permitted). This prevents wasted API calls and potential rate limiting.
-2. **Cash Reserve Guard (Portfolio Risk):** Current USDT balance is 0.22 with an equity of ~382.60. The portfolio is effectively 100% fully deployed. Implement a minimum cash reserve threshold (e.g., 10-15% USDT) to ensure capital is always available for exceptionally high-probability setups and to buffer against sudden market-wide drawdowns.
-3. **Time-in-Trade Guard (Capital Efficiency):** Capital is being tied up for excessively long periods (e.g., `PROMUSDT` held for 160 hours for a -2.4% loss, `ARBUSDT` for 151 hours). Propose implementing a time-based exit or tightening the trailing stop after 72-96 hours of stagnation. This forces capital rotation out of slow movers since the portfolio is fully invested.
-4. **Optimizer Integration (Structural):** The Optuna tuner just found a new best training score of 23.81%. Validate these parameters out-of-sample immediately and queue for a live tactical override if forward testing confirms the edge.
+### 1. Risk Management & Execution
+* **Exclude Unsupported Pairs:** Immediately add `ORCAUSDT` and `METISUSDT` to the restricted pairs list. They are causing API "-2010" permission errors and wasting execution cycles.
+* **Review Short-Duration Stop-Outs:** `GRTUSDT` (-2.26% in 42m) and `WOOUSDT` (-1.96% in 7m) indicate potential vulnerability to sudden wicks, spread, or liquidity issues upon entry. Consider implementing a minimum volume/liquidity threshold filter for candidate pairs to avoid erratic price action on low-cap coins.
+* **Capital Velocity Monitoring:** `EPICUSDT` tied up capital for 463 hours (19 days) only to close at a -3.65% loss. Since hard time limits (e.g., 72h) were previously rejected, consider a **time-based trailing stop** that slowly tightens after a significant duration (e.g., 150+ hours) to free up stagnant capital.
+
+### 2. System Health & Structural
+* **Investigate Service Restarts:** The `trading-bot.service` restarted cleanly twice within 10 minutes (02:44 and 02:54). While harmless if triggered by config updates, ensure this isn't an unintended restart loop causing missed 15-minute candle closes.
+* **Optuna Tuning Progression:** The Bayesian optimizer found a new best training score (38.99%). Given recent rejections of ATR stops and time filters causing out-of-sample degradation, ensure the tuner is strictly using out-of-sample forward validation before deploying these new parameters to production.

@@ -4,7 +4,7 @@
     "VOL_SPIKE_MULT_OFFSET": 0.0,
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
-    "rationale": "BTC remains positive on the day (+0.54%) supported by record ETF inflows, keeping risk parameters at default neutral levels despite temporary NFP-induced intraday volatility.",
+    "rationale": "BTC is effectively flat (-0.06% 24h) and supported by strong ETF inflows, justifying a return to default neutral risk parameters.",
     "confidence": 0.95,
     "learning_to_persist": ""
 }

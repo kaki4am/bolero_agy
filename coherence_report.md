@@ -1,15 +1,22 @@
-I have successfully completed the system coherence audit as requested in your instructions. 
+I have completed the requested audit based on the instructions from `/tmp/coherence_prompt.md`. Here is a summary of the analysis and the repairs I made across the trading system:
 
-Here is a summary of what I analyzed and repaired:
+1. **Strategy Logic Alignment (`bot.py` vs `portfolio_backtester.py`)**
+   - **Issue Detected**: In `portfolio_backtester.py`, the `Pullback_RSI` setup logic incorrectly used the `btc_uptrend_15m` flag to validate the macro trend, whereas `bot.py` correctly checked if the specific pair's price was above its own 1-hour 200 EMA (`cp > ema200`). 
+   - **Fix Applied**: Updated `portfolio_backtester.py` to correctly calculate and use the `ema200_1h` for the specific trading pair as the macro trend confirmation for the `Pullback_RSI` signal, perfectly aligning the backtester logic with the live `bot.py` implementation.
 
-### 1. Dashboard and Live Bot Strategy Alignment
-- **Analysis:** I analyzed `bot.py`, `dashboard.py`, `forecast_dashboard.py`, `view_blacklist.py`, `backtest_dashboard.py`, and `bolero.py`. 
-- **Findings:** The core strategy logic in `bot.py` has been updated to use both `bbw_breakout_valid` and `vol_breakout_valid` indicators, both of which are exported to `dashboard_data.json`. However, `dashboard.py` was only designed to parse and display the `bbw_breakout_valid` indicator, leaving the volume breakout condition hidden from the Live Dashboard view.
-- **Repairs:** I patched `dashboard.py` to correctly extract and render `vol_breakout_valid` ("Vol Valid") alongside the BBW indicator to ensure full alignment with the bot's live condition checks.
+2. **Dashboard UI Updates (`bot.py` & `dashboard.py`)**
+   - **Issue Detected**: The `dashboard.py` script was not displaying the new `vol_surge` metric used by the `Trend_BB_Squeeze` setup, nor was it showing the RSI indicators newly used by the `Pullback_RSI` setup.
+   - **Fix Applied**: 
+     - Modified `bot.py` to persist `rsi_1h`, `rsi_1h_prev`, `rsi_min_5`, and `ema200_1h` into the `self.current_indicators` dictionary, ensuring they are written to `dashboard_data.json`.
+     - Updated `dashboard.py` to read these values and accurately display the `vol_surge` boolean flag alongside the new RSI and EMA metrics in the live UI.
 
-### 2. System Cleanup Safeties
-- **Analysis:** I compared the file whitelist in `cleanup_system.py` against all active files presently in the `/root/` directory.
-- **Findings:** Three critical ideation markdown files populated by the system's AI committee (`price_ideas.md`, `system_ideas.md`, and `trade_ideas.md`) were completely absent from the `WHITELIST`, meaning the cleanup script would have wiped them out during its next routine run. I also identified `.lesshst` as being unlisted, which would have thrown minor errors when wiped.
-- **Repairs:** I appended `price_ideas.md`, `system_ideas.md`, `trade_ideas.md`, and `.lesshst` to the `WHITELIST` array in `cleanup_system.py`.
+3. **Cleanup System Safeguards (`cleanup_system.py`)**
+   - **Issue Detected**: Several active files and temporary JSON state files were missing from the `WHITELIST` in `cleanup_system.py`, leaving them vulnerable to accidental deletion by the cleanup routine. 
+   - **Fix Applied**: I added the following items to the whitelist:
+     - Temporary state files (`active_positions.json.tmp`, `dashboard_data.json.tmp`).
+     - Script artifacts (`fix_bot_entry.py`, `update_dashboard.py`, `update_gemini.py`).
+     - AI committee notes (`price_ideas.md`, `system_ideas.md`, `trade_ideas.md`).
+     *(Note: `active_positions.json`, `tactical_overrides.json`, and `ai_manager.log` were already safely whitelisted).*
 
-A detailed log of these findings and actions has been written to [/root/coherence_report.md](file:///root/coherence_report.md) as instructed. Let me know if you need any further analysis!
+I have documented these findings and repairs inside `coherence_report.md`, which is now available in your `/root` directory.
+It looks like the system verification tests just finished running in the background and all tests passed successfully! The syntax, code quality, alignment consistency, and historical stress tests all check out perfectly. Let me know if there's anything else you need.
