@@ -24,6 +24,41 @@ def get_news_headlines():
         headlines.append(f"Error fetching news: {e}")
     return "\n".join(headlines)
 
+def get_alpha_signals():
+    signals = []
+    # CoinGecko Trending
+    try:
+        url = "https://api.coingecko.com/api/v3/search/trending"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read())
+            trending_coins = [item['item']['symbol'].upper() + 'USDT' for item in data['coins'][:7]]
+            signals.append(f"- CoinGecko Trending Searches: {', '.join(trending_coins)}")
+    except Exception as e:
+        signals.append(f"- Error fetching CoinGecko trending: {e}")
+
+    # Binance Top Gainers & Volume
+    try:
+        api_key = os.getenv('BINANCE_API_KEY')
+        api_secret = os.getenv('BINANCE_API_SECRET')
+        client = Client(api_key, api_secret)
+        tickers = client.get_ticker()
+        usdt_pairs = [t for t in tickers if t['symbol'].endswith('USDT') and 'UP' not in t['symbol'] and 'DOWN' not in t['symbol']]
+        
+        # Gainers
+        top_gainers = sorted(usdt_pairs, key=lambda x: float(x['priceChangePercent']), reverse=True)[:5]
+        gainer_str = ", ".join([f"{t['symbol']} (+{t['priceChangePercent']}%)" for t in top_gainers])
+        signals.append(f"- Binance Top 24h Gainers: {gainer_str}")
+        
+        # Volume
+        top_volume = sorted([t for t in usdt_pairs if t['symbol'] not in ['BTCUSDT', 'ETHUSDT', 'FDUSDUSDT', 'USDCUSDT']], key=lambda x: float(x['quoteVolume']), reverse=True)[:5]
+        vol_str = ", ".join([f"{t['symbol']} (${float(t['quoteVolume'])/1e6:.1f}M)" for t in top_volume])
+        signals.append(f"- Binance Top 24h Volume (Ex-BTC/ETH/Stables): {vol_str}")
+    except Exception as e:
+        signals.append(f"- Error fetching Binance top pairs: {e}")
+
+    return "\n".join(signals)
+
 def get_market_telemetry():
     api_key = os.getenv('BINANCE_API_KEY')
     api_secret = os.getenv('BINANCE_API_SECRET')
@@ -57,6 +92,9 @@ def main():
 
     print("Fetching news headlines...")
     news = get_news_headlines()
+    
+    print("Fetching alpha signals...")
+    alpha = get_alpha_signals()
 
     prompt = f"""You are the dynamic AI Risk & Momentum Manager for a live Binance spot trading bot that uses a Trend-Filtered BB Squeeze Breakout strategy (15m to 24h holds).
 
@@ -64,10 +102,13 @@ INPUT TELEMETRY:
 - Local Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 - BTCUSDT Current Price: ${btc_price:.2f} (24h Change: {btc_change:+.2f}%)
 - Current Active Bot Positions: {", ".join(active_positions) if active_positions else "None"}
-- Recent Crypto News Headlines (Source of Social/News Sentiment):
+- Recent Crypto News Headlines:
 {news}
+- MOMENTUM & ALPHA SIGNALS (Top Whitelist Candidates):
+{alpha}
 
 MANAGEMENT PRINCIPLES (follow these strictly):
+0. REQUIRED WEB SEARCH: Before deciding, you MUST use your web search tools to research the latest sentiment and top posts on the Reddit /r/CryptoCurrency subreddit. Incorporate this retail sentiment into your decision and rationale.
 1. During sell-offs: REDUCE position size (lower RISK_MULTIPLIER) and TIGHTEN stops (negative SL_MULT_OFFSET). 
 2. During stable/bullish conditions: Return to full risk (RISK_MULTIPLIER=1.0) and normal stops (SL_MULT_OFFSET=0.0).
 3. Portfolio eject should be TIGHTER (POSITIVE offset) in sell-offs to protect capital faster.
@@ -92,7 +133,7 @@ Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matchi
   "PORTFOLIO_EJECT_OFFSET": float (0.0 to 2.0, default 0.0),
   "blacklist_add": list of strings (e.g. ["DOGEUSDT"]),
   "whitelist_add": list of strings (e.g. ["WIFUSDT", "RENDERUSDT"], only for hyped altcoins),
-  "rationale": string (brief, 1-sentence strategic rationale),
+  "rationale": string (brief, 1-sentence strategic rationale, mentioning the reddit sentiment),
   "confidence": float (0.0 to 1.0),
   "learning_to_persist": string (optional, 1-sentence note to append to research_notes.md if you learned something new)
 }}
@@ -101,7 +142,7 @@ Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matchi
     print("Invoking Antigravity AI Agent...")
     try:
         proc = subprocess.run(
-            ['/root/.local/bin/agy', '--print', prompt],
+            ['/root/.local/bin/agy', '--dangerously-skip-permissions', '--print', prompt],
             capture_output=True,
             text=True,
             check=True
