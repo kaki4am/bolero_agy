@@ -201,6 +201,20 @@ class TradingBot:
         
         self.save_restricted_pairs()
         
+        # Check tactical_overrides.json for AI Manager whitelisting (social sentiment / news hypes)
+        try:
+            overrides_path = 'tactical_overrides.json'
+            if os.path.exists(overrides_path):
+                with open(overrides_path, 'r') as f:
+                    overrides = json.load(f)
+                whitelist = overrides.get('whitelist_add', [])
+                for pair in whitelist:
+                    if pair not in valid_pairs and await self.test_symbol_permission(pair):
+                        print(f"Force tracking AI Manager whitelist pair: {pair}")
+                        valid_pairs.append(pair)
+        except Exception as e:
+            print(f"Error loading AI Manager whitelist: {e}")
+
         # Force-track any pair with an active position from DB so stop losses work
         for pair, pos in list(self.positions.items()):
             if pos.get('entries', 0) > 0 and pair not in valid_pairs:
@@ -260,6 +274,40 @@ class TradingBot:
                             self.restricted_pairs.add(pair)
                             added_any = True
                             print(f"Tactically blacklisted by AI Manager: {pair}")
+                    
+                    # Dynamically spawn websockets for new whitelisted pairs
+                    whitelist = overrides.get('whitelist_add', [])
+                    for pair in whitelist:
+                        if pair not in self.tracked_pairs and pair not in self.restricted_pairs:
+                            if await self.test_symbol_permission(pair):
+                                print(f"Dynamic Whitelist: Spawning live stream for {pair}...")
+                                self.tracked_pairs.append(pair)
+                                try:
+                                    import pandas as pd
+                                    klines = await self.client.get_historical_klines(pair, AsyncClient.KLINE_INTERVAL_1MINUTE, "6 hours ago UTC")
+                                    if len(klines) > 1: klines = klines[:-1]
+                                    if klines:
+                                        df = pd.DataFrame(klines, columns=['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i'])
+                                        self.data_1m[pair] = pd.DataFrame({
+                                            'timestamp': pd.to_datetime([int(x) for x in df['t']], unit='ms'),
+                                            'high': df['h'].astype(float),
+                                            'low': df['l'].astype(float),
+                                            'close': df['c'].astype(float)
+                                        })
+                                        if pair not in self.positions:
+                                            self.positions[pair] = {'entries': 0, 'qty': 0.0}
+                                        if pair not in self.last_trade_time:
+                                            self.last_trade_time[pair] = 0
+                                        
+                                        with open('/root/tracked_pairs.json', 'w') as f:
+                                            json.dump({'tracked': self.tracked_pairs}, f)
+                                            
+                                        stream = self.bm.kline_socket(pair, interval='1m')
+                                        import asyncio
+                                        asyncio.create_task(self.handle_socket(stream, pair))
+                                except Exception as e:
+                                    print(f"Error initializing dynamic pair {pair}: {e}")
+
                 if added_any:
                     self.save_restricted_pairs()
             except Exception as e:

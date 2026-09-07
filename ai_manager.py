@@ -17,7 +17,7 @@ def get_news_headlines():
         with urllib.request.urlopen(req, timeout=10) as r:
             xml_data = r.read()
         root = ET.fromstring(xml_data)
-        for item in root.findall('.//item')[:6]:
+        for item in root.findall('.//item')[:8]:
             title = item.find('title').text
             headlines.append(f"- {title}")
     except Exception as e:
@@ -58,51 +58,48 @@ def main():
     print("Fetching news headlines...")
     news = get_news_headlines()
 
-
-
-    prompt = f"""You are the dynamic AI Risk Manager for a live Binance spot trading bot that uses a Trend-Filtered BB Squeeze Breakout strategy (15m to 24h holds).
+    prompt = f"""You are the dynamic AI Risk & Momentum Manager for a live Binance spot trading bot that uses a Trend-Filtered BB Squeeze Breakout strategy (15m to 24h holds).
 
 INPUT TELEMETRY:
 - Local Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 - BTCUSDT Current Price: ${btc_price:.2f} (24h Change: {btc_change:+.2f}%)
 - Current Active Bot Positions: {", ".join(active_positions) if active_positions else "None"}
-- Recent Crypto News Headlines:
+- Recent Crypto News Headlines (Source of Social/News Sentiment):
 {news}
 
-RISK MANAGEMENT PRINCIPLES (follow these strictly):
-1. During sell-offs: REDUCE position size (lower RISK_MULTIPLIER) and TIGHTEN stops (negative SL_MULT_OFFSET). The goal is to LOSE LESS per trade, not give trades "more room". Wider stops in a downtrend = bigger losses.
+MANAGEMENT PRINCIPLES (follow these strictly):
+1. During sell-offs: REDUCE position size (lower RISK_MULTIPLIER) and TIGHTEN stops (negative SL_MULT_OFFSET). 
 2. During stable/bullish conditions: Return to full risk (RISK_MULTIPLIER=1.0) and normal stops (SL_MULT_OFFSET=0.0).
-3. Portfolio eject should be TIGHTER (POSITIVE offset) in sell-offs to protect capital faster (e.g., base -5.0 + 1.0 = -4.0%). Do not use negative offsets for eject as it widens the loss limit!
-4. Only blacklist pairs with specific negative catalysts (delistings, hacks, regulatory action). Do NOT blacklist pairs just because BTC is down — that's what RISK_MULTIPLIER is for.
-5. NEVER blacklist a pair the bot currently holds an active position on.
-6. Default state is neutral (1.0, 0.0, 0.0, 0.0, []) — only deviate if there's a clear reason.
+3. Portfolio eject should be TIGHTER (POSITIVE offset) in sell-offs to protect capital faster.
+4. BLACKLISTING (Defense): Only blacklist pairs with specific negative catalysts (delistings, hacks). NEVER blacklist a pair the bot currently holds.
+5. WHITELISTING (Offense): If you see news about a specific altcoin surging, breaking out, or gaining massive narrative hype, add it to the whitelist. The bot will automatically track it and wait for a mathematical setup before buying.
 
-    DECISION MATRIX:
-    - BTC -1% to -3%: RISK_MULTIPLIER 0.7-0.9, SL_MULT_OFFSET -0.2 to 0.0 (tighter)
-    - BTC -3% to -5%: RISK_MULTIPLIER 0.3-0.5, SL_MULT_OFFSET -0.3 to -0.2 (much tighter)
-    - BTC < -5%: RISK_MULTIPLIER 0.0 (pause all entries)
-    - BTC flat or positive: RISK_MULTIPLIER 1.0, SL_MULT_OFFSET 0.0
+DECISION MATRIX:
+- BTC -1% to -3%: RISK_MULTIPLIER 0.7-0.9, SL_MULT_OFFSET -0.2 to 0.0 (tighter)
+- BTC -3% to -5%: RISK_MULTIPLIER 0.3-0.5, SL_MULT_OFFSET -0.3 to -0.2 (much tighter)
+- BTC < -5%: RISK_MULTIPLIER 0.0 (pause all entries)
+- BTC flat or positive: RISK_MULTIPLIER 1.0, SL_MULT_OFFSET 0.0
 
-    PREVIOUS LEARNINGS / RESEARCH NOTES:
-    {open('/root/research_notes.md').read() if os.path.exists('/root/research_notes.md') else 'No previous learnings.'}
+PREVIOUS LEARNINGS / RESEARCH NOTES:
+{open('/root/research_notes.md').read() if os.path.exists('/root/research_notes.md') else 'No previous learnings.'}
 
-    OUTPUT FORMAT:
-    Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matching this schema:
-    {{
-      "RISK_MULTIPLIER": float (0.0 to 1.2, default 1.0),
-      "SL_MULT_OFFSET": float (-0.5 to 0.5, default 0.0, NEGATIVE = tighter stops, POSITIVE = wider),
-      "VOL_SPIKE_MULT_OFFSET": float (0.0 to 0.5, default 0.0),
-      "PORTFOLIO_EJECT_OFFSET": float (0.0 to 2.0, default 0.0, POSITIVE = tighter/more defensive stop),
-      "blacklist_add": list of strings (only for specific news catalysts, NOT for general market moves),
-      "rationale": string (brief, 1-sentence strategic rationale),
-      "confidence": float (0.0 to 1.0, 1.0 being highly confident),
-      "learning_to_persist": string (optional, 1-sentence note to append to research_notes.md if you learned something new or rejected a specific action, otherwise empty string)
-    }}
-    """
+OUTPUT FORMAT:
+Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matching this schema:
+{{
+  "RISK_MULTIPLIER": float (0.0 to 1.2, default 1.0),
+  "SL_MULT_OFFSET": float (-0.5 to 0.5, default 0.0),
+  "VOL_SPIKE_MULT_OFFSET": float (0.0 to 0.5, default 0.0),
+  "PORTFOLIO_EJECT_OFFSET": float (0.0 to 2.0, default 0.0),
+  "blacklist_add": list of strings (e.g. ["DOGEUSDT"]),
+  "whitelist_add": list of strings (e.g. ["WIFUSDT", "RENDERUSDT"], only for hyped altcoins),
+  "rationale": string (brief, 1-sentence strategic rationale),
+  "confidence": float (0.0 to 1.0),
+  "learning_to_persist": string (optional, 1-sentence note to append to research_notes.md if you learned something new)
+}}
+"""
 
     print("Invoking Antigravity AI Agent...")
     try:
-        # Run agy to get LLM response
         proc = subprocess.run(
             ['/root/.local/bin/agy', '--print', prompt],
             capture_output=True,
@@ -111,7 +108,6 @@ RISK MANAGEMENT PRINCIPLES (follow these strictly):
         )
         response_text = proc.stdout.strip()
         
-        # Clean up any markdown backticks if the model returned them
         if response_text.startswith("```"):
             lines = response_text.splitlines()
             if lines[0].startswith("```"):
@@ -120,10 +116,8 @@ RISK MANAGEMENT PRINCIPLES (follow these strictly):
                 lines = lines[:-1]
             response_text = "\n".join(lines).strip()
             
-        # Parse and validate JSON
         overrides = json.loads(response_text)
         
-        # Bounds validation - clamp values to safe ranges
         confidence = float(overrides.get('confidence', 1.0))
         if confidence < 0.8:
             print(f"AI Confidence too low ({confidence:.2f}). Keeping existing risk configuration.")
@@ -134,13 +128,12 @@ RISK MANAGEMENT PRINCIPLES (follow these strictly):
         overrides['VOL_SPIKE_MULT_OFFSET'] = max(0.0, min(0.5, float(overrides.get('VOL_SPIKE_MULT_OFFSET', 0.0))))
         overrides['PORTFOLIO_EJECT_OFFSET'] = max(0.0, min(2.0, float(overrides.get('PORTFOLIO_EJECT_OFFSET', 0.0))))
         
-        # Validate blacklist_add is a list of strings
         blacklist = overrides.get('blacklist_add', [])
-        if not isinstance(blacklist, list):
-            blacklist = []
         overrides['blacklist_add'] = [s for s in blacklist if isinstance(s, str) and s.endswith('USDT')]
         
-        # Save to tactical overrides
+        whitelist = overrides.get('whitelist_add', [])
+        overrides['whitelist_add'] = [s for s in whitelist if isinstance(s, str) and s.endswith('USDT')]
+        
         with open('tactical_overrides.json', 'w') as f:
             json.dump(overrides, f, indent=4)
             
