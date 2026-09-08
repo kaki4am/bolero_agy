@@ -13,7 +13,7 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V152 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V153 Indicators...")
         total = len(self.pair_data)
         
         # Pre-align BTC Trend to 1m resolution
@@ -21,9 +21,11 @@ class PortfolioBacktester:
             btc_15m_shifted = self.btc_15m.copy()
             btc_15m_shifted['timestamp'] = btc_15m_shifted['timestamp'] + pd.Timedelta(minutes=15)
             btc_15m_indexed = btc_15m_shifted.set_index('timestamp')
-                
+            btc_15m_indexed['btc_24h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(96)) / btc_15m_indexed['close'].shift(96) * 100
+            
             self.btc_trend_aligned = pd.DataFrame({
-                'uptrend_15m': btc_15m_indexed['close'] > btc_15m_indexed['ema200']
+                'uptrend_15m': btc_15m_indexed['close'] > btc_15m_indexed['ema200'],
+                'btc_24h_return': btc_15m_indexed['btc_24h_return']
             })
         else:
             self.btc_trend_aligned = None
@@ -33,58 +35,46 @@ class PortfolioBacktester:
                 status_callback(f"[{i+1}/{total}] Processing {symbol}...")
             
             df_1m = data['1m'].copy()
+            if 'qav' in df_1m.columns: df_1m['qav'] = df_1m['qav'].astype(float)
+            if 'volume' in df_1m.columns: df_1m['volume'] = df_1m['volume'].astype(float)
             
             indicators = {}
             
-            indicators['sma30'] = ta.sma(df_1m['close'], length=30)
             bb = ta.bbands(df_1m['close'], length=20, std=2.0)
-            atr1m = ta.atr(df_1m['high'], df_1m['low'], df_1m['close'], length=14)
             
             if bb is not None and not bb.empty:
                 sma20 = bb['BBM_20_2.0_2.0'].ffill()
+                indicators['sma20'] = sma20
                 indicators['bb_upper'] = bb['BBU_20_2.0_2.0'].ffill()
                 indicators['bb_lower'] = bb['BBL_20_2.0_2.0'].ffill()
                 
                 bbw = (indicators['bb_upper'] - indicators['bb_lower']) / sma20
-                bbw_sma50 = ta.sma(bbw, length=50)
-                indicators['bbw_breakout_valid'] = (bbw > (1.5 * bbw_sma50)).fillna(True)
-                
-                kc_upper = sma20 + 1.5 * atr1m
-                kc_lower = sma20 - 1.5 * atr1m
-                
-                # Squeeze ON: BB inside KC
-                sqz_on = (indicators['bb_upper'] < kc_upper) & (indicators['bb_lower'] > kc_lower)
-                # Squeeze was recently on (last 15 minutes) but is now expanding
-                sqz_recent = sqz_on.shift(1).rolling(15).max() > 0
-                indicators['bb_squeeze'] = sqz_recent & (~sqz_on)
+                indicators['bb_width'] = bbw
+                indicators['bbw_sma30'] = ta.sma(bbw, length=30).ffill().bfill()
             else:
+                indicators['sma20'] = df_1m['close']
                 indicators['bb_upper'] = df_1m['close'] * 1.1
-                indicators['bb_squeeze'] = pd.Series(False, index=df_1m.index)
-                indicators['bbw_breakout_valid'] = pd.Series(True, index=df_1m.index)
-            indicators['bb_squeeze'] = indicators['bb_squeeze'].fillna(False)
+                indicators['bb_lower'] = df_1m['close'] * 0.9
+                indicators['bb_width'] = pd.Series(0.0, index=df_1m.index)
+                indicators['bbw_sma30'] = pd.Series(0.0, index=df_1m.index)
                 
             # Calculate 1h indicators
             df_1h = df_1m.resample('1h', on='timestamp').agg({
-                'high': 'max', 'low': 'min', 'close': 'last'
+                'high': 'max', 'low': 'min', 'close': 'last', 'qav': 'sum', 'volume': 'sum'
             }).dropna().reset_index()
 
             if len(df_1h) >= 15:
                 df_1h['atr'] = ta.atr(df_1h['high'], df_1h['low'], df_1h['close'], length=14)
             else:
                 df_1h['atr'] = df_1h['close'] * 0.01
+
+            df_1h['altcoin_1h_volume'] = df_1h['qav']
+            df_1h['altcoin_avg_volume_usd'] = df_1h['qav'].rolling(24, min_periods=1).mean()
+            df_1h['vol_1h_avg_24h'] = df_1h['volume'].rolling(24, min_periods=1).mean()
                 
             # Dynamic Trend Efficiency Filter (Chop Filter)
             if len(df_1h) >= 24:
-                trend_24h_pct = df_1h['close'].diff(24).abs() / df_1h['close'].shift(24)
-                avg_hourly_range_pct = (df_1h['atr'] / df_1h['close']).rolling(24).mean()
-                df_1h['er'] = (trend_24h_pct / avg_hourly_range_pct).fillna(1.0)
-                
-                df_1h['volatility_1h'] = df_1h['atr'] / df_1h['close']
-                df_1h['volatility_24h'] = avg_hourly_range_pct
-            else:
-                df_1h['er'] = 1.0
-                df_1h['volatility_1h'] = 0.01
-                df_1h['volatility_24h'] = 0.01
+                pass
 
             df_1h['timestamp'] = df_1h['timestamp'] + pd.Timedelta(hours=1)
             df_1h_idx = df_1h.set_index('timestamp')
@@ -97,9 +87,11 @@ class PortfolioBacktester:
                 indicators['btc_safe'] = pd.DataFrame({'uptrend_15m': [True]*len(df_1m)}, index=df_1m_idx.index)
 
             indicators['atr'] = df_1h_idx['atr'].reindex(df_1m_idx.index).ffill().bfill().fillna(df_1m['close'] * 0.01)
-            indicators['er'] = df_1h_idx['er'].reindex(df_1m_idx.index).ffill().bfill().fillna(1.0)
-            indicators['volatility_1h'] = df_1h_idx['volatility_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0.01)
-            indicators['volatility_24h'] = df_1h_idx['volatility_24h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0.01)
+            
+            indicators['altcoin_1h_volume'] = df_1h_idx['altcoin_1h_volume'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
+            indicators['altcoin_avg_volume_usd'] = df_1h_idx['altcoin_avg_volume_usd'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
+            indicators['hourly_volume'] = df_1h_idx['volume'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
+            indicators['vol_1h_avg_24h'] = df_1h_idx['vol_1h_avg_24h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
 
             self.precalculated_indicators[symbol] = indicators
 
@@ -135,14 +127,16 @@ class PortfolioBacktester:
                 'high': df['high'].values,
                 'low': df['low'].values,
                 'atr': ind['atr'].values,
-                'er': ind['er'].values,
-                'sma30': ind['sma30'].values,
-                'bb_upper': ind['bb_upper'].values,
-                'bb_squeeze': ind['bb_squeeze'].values,
                 'btc_uptrend_15m': ind['btc_safe']['uptrend_15m'].values,
-                'bbw_breakout_valid': ind['bbw_breakout_valid'].values,
-                'volatility_1h': ind['volatility_1h'].values,
-                'volatility_24h': ind['volatility_24h'].values
+                'sma20': ind['sma20'].values,
+                'bb_upper': ind['bb_upper'].values,
+                'bb_width': ind['bb_width'].values,
+                'bbw_sma30': ind['bbw_sma30'].values,
+                'altcoin_1h_volume': ind['altcoin_1h_volume'].values,
+                'altcoin_avg_volume_usd': ind['altcoin_avg_volume_usd'].values,
+                'hourly_volume': ind['hourly_volume'].values,
+                'vol_1h_avg_24h': ind['vol_1h_avg_24h'].values,
+                'btc_24h_return': ind['btc_safe']['btc_24h_return'].values if 'btc_24h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values
             }
 
                 # Simulation Loop
@@ -230,23 +224,13 @@ class PortfolioBacktester:
                     min_hold_passed = (idx - pos['time']) > 360
                     
                     high_profit_pct = (high_price - pos['entry_price']) / pos['entry_price']
+                    old_sl = pos['sl']
                     entry = pos['entry_price']
                     
-                    old_sl = pos['sl']
-                    
-                    if pos.get('setup') == 'Trend_BB_Squeeze':
-                        # Trailing stop based on 3.0 * ATR
-                        mult = params.get('ATR_SL_MULT', 3.0)
-                        if not s_data['btc_uptrend_15m'][idx]:
-                            mult = mult * 0.5
-                        entry_atr = pos.get('entry_atr', atr)
-                        trail_dist_price = max(mult * entry_atr, high_price * params.get('SL_MIN_PCT', 0.015))
-                        pos['sl'] = max(pos['sl'], high_price - trail_dist_price)
-                    else:
-                        if high_profit_pct > trail_trigger:
-                            pos['sl'] = max(pos['sl'], high_price * (1.0 - trail_dist))
-                        elif high_profit_pct > be_trigger and min_hold_passed:
-                            pos['sl'] = max(pos['sl'], entry * (1.0 + be_lock))
+                    if high_profit_pct > trail_trigger:
+                        pos['sl'] = max(pos['sl'], high_price * (1.0 - trail_dist))
+                    elif high_profit_pct > be_trigger and min_hold_passed:
+                        pos['sl'] = max(pos['sl'], entry * (1.0 + be_lock))
 
                     exit_reason = None
                     take_profit = pos.get('tp', params.get('TAKE_PROFIT', 0.0))
@@ -258,16 +242,7 @@ class PortfolioBacktester:
                         exit_reason = "TakeProfit"
                         exit_price = pos['entry_price'] * (1.0 + take_profit) * (1.0 - slippage_pct)
                     else:
-                        current_vol = s_data['volatility_1h'][idx]
-                        rolling_vol = s_data['volatility_24h'][idx]
-                        max_hold_time = 1440
-                        vol_spike_mult = params.get('VOL_SPIKE_MULTIPLIER', 1.5)
-                        if current_vol > (vol_spike_mult * rolling_vol) and high_profit_pct < 0:
-                            max_hold_time = 720
-                            
-                        if (idx - pos['time']) > max_hold_time:
-                            exit_reason = "TimeExit"
-                            exit_price = price * (1.0 - slippage_pct)
+                        pass
 
                     if exit_reason:
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100
@@ -294,17 +269,29 @@ class PortfolioBacktester:
                     
                     setup = None
                     
-                    sma30 = s_data['sma30'][idx]
                     bb_upper = s_data['bb_upper'][idx]
-                    bb_squeeze = s_data['bb_squeeze'][idx]
-                    er = s_data['er'][idx]
-                    
-                    min_er = params.get('MIN_EFFICIENCY_RATIO', 0.3)
-                    breakout_mult = params.get('BREAKOUT_VOL_MULT', 1.5)
-                    
-                    if price > sma30 and bb_squeeze and price > bb_upper + (atr * breakout_mult) and er > min_er and s_data['bbw_breakout_valid'][idx]:
-                        setup = "Trend_BB_Squeeze"
-                            
+                    sma20 = s_data['sma20'][idx]
+
+                    # 1. BTC-Conditioned Altcoin Volume Breakout
+                    btc_ret = s_data['btc_24h_return'][idx]
+                    alt_1h_vol = s_data['altcoin_1h_volume'][idx]
+                    alt_avg_vol = s_data['altcoin_avg_volume_usd'][idx]
+                    if -3.0 <= btc_ret <= 1.0:
+                        if alt_1h_vol > 1.5 * alt_avg_vol:
+                            if price > sma20:
+                                setup = "Altcoin_Decoupling"
+
+                    # 2. Asset-Specific Bollinger Band Squeeze Breakout
+                    if s in ["BTCUSDT", "ETHUSDT"]:
+                        bbw = s_data['bb_width'][idx]
+                        bbw_sma30 = s_data['bbw_sma30'][idx]
+                        hourly_vol = s_data['hourly_volume'][idx]
+                        avg_vol = s_data['vol_1h_avg_24h'][idx]
+                        
+                        if bbw < bbw_sma30:
+                            if price > bb_upper and hourly_vol > 1.5 * avg_vol:
+                                setup = "LargeCap_BB_Squeeze"
+
                     if setup:
                         volatility = atr / price
                         max_vol = params.get('VOLATILITY_CAP', 0.015)
@@ -318,9 +305,7 @@ class PortfolioBacktester:
                             elif active_count == 2: size_strength = params.get('SCALE_2_POS', 0.6)
                             elif active_count >= 3: size_strength = params.get('SCALE_3_POS', 0.4)
                             
-                            if ts.dayofweek == 4:
-                                size_strength *= 1.5
-                                
+                            
                             risk_pct = (params.get('BASE_RISK_PERCENT', 2.0) / 100.0) * size_strength
                             if not s_data['btc_uptrend_15m'][idx]:
                                 risk_pct = risk_pct * 0.5
@@ -328,10 +313,8 @@ class PortfolioBacktester:
 
                             mult = params.get('ATR_SL_MULT', 2.5)
                             sl_min_pct = params.get('SL_MIN_PCT', 0.015)
-                            sl_max_pct = params.get('SL_MAX_PCT', 0.030)
                             sl_dist_price = mult * atr
-                            # sl_max_pct
-                            sl_dist_price = min(max(sl_dist_price, price * sl_min_pct), price * sl_max_pct)
+                            sl_dist_price = max(sl_dist_price, price * sl_min_pct)
                             
                             target_qty = risk_usd / sl_dist_price
                             trade_amount = target_qty * price

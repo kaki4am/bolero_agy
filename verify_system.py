@@ -96,7 +96,8 @@ def check_backtester():
             'high': np.random.uniform(110, 120, 1000),
             'low': np.random.uniform(90, 100, 1000),
             'close': np.random.uniform(100, 110, 1000),
-            'volume': np.random.uniform(1000, 5000, 1000)
+            'volume': np.random.uniform(100, 1000, 1000),
+            'qav': np.random.uniform(1000, 10000, 1000)
         })
         mock_df_15m = pd.DataFrame({
             'timestamp': pd.date_range(start='2026-05-10', periods=100, freq='15min'),
@@ -229,12 +230,12 @@ async def run_single_stress(client, tester, params, period, symbols):
         kl_15m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_15MINUTE, btc_15m_start, period['end'])
         
         df_1m = pd.DataFrame(kl_1m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
-        for col in ['open', 'high', 'low', 'close', 'volume']:
+        for col in ['open', 'high', 'low', 'close', 'volume', 'qav']:
             df_1m[col] = df_1m[col].astype(float)
         df_1m['timestamp'] = pd.to_datetime(df_1m['timestamp'], unit='ms')
         
         df_15m = pd.DataFrame(kl_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
-        for col in ['open', 'high', 'low', 'close', 'volume']:
+        for col in ['open', 'high', 'low', 'close', 'volume', 'qav']:
             df_15m[col] = df_15m[col].astype(float)
         df_15m['timestamp'] = pd.to_datetime(df_15m['timestamp'], unit='ms')
         

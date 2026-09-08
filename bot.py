@@ -3,7 +3,7 @@ import os
 import json
 import sqlite3
 import time
-import datetime
+
 import math
 import pandas as pd
 import pandas_ta as ta
@@ -48,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V152 Trend-Filtered BB Squeeze Breakout
+        # Strategy V153 Altcoin Decoupling & Large-Cap Squeeze
         self.config = {
             'MIN_VOLATILITY': 0.001,
             'BASE_RISK_PERCENT': 4.611576631674215,
@@ -283,7 +283,6 @@ class TradingBot:
                                 print(f"Dynamic Whitelist: Spawning live stream for {pair}...")
                                 self.tracked_pairs.append(pair)
                                 try:
-                                    import pandas as pd
                                     klines = await self.client.get_historical_klines(pair, AsyncClient.KLINE_INTERVAL_1MINUTE, "6 hours ago UTC")
                                     if len(klines) > 1: klines = klines[:-1]
                                     if klines:
@@ -303,7 +302,6 @@ class TradingBot:
                                             json.dump({'tracked': self.tracked_pairs}, f)
                                             
                                         stream = self.bm.kline_socket(pair, interval='1m')
-                                        import asyncio
                                         asyncio.create_task(self.handle_socket(stream, pair))
                                 except Exception as e:
                                     print(f"Error initializing dynamic pair {pair}: {e}")
@@ -359,11 +357,13 @@ class TradingBot:
             closes_15m = pd.Series([float(k[4]) for k in klines_15m])
             ema200_15m = ta.ema(closes_15m, length=200).iloc[-1]
             btc_cp_15m = closes_15m.iloc[-1]
+            btc_ret_24h = (btc_cp_15m - closes_15m.iloc[-97]) / closes_15m.iloc[-97] * 100 if len(closes_15m) > 96 else 0.0
 
             self.market_trend = {
-                'btc_uptrend_15m': btc_cp_15m > ema200_15m
+                'btc_uptrend_15m': btc_cp_15m > ema200_15m,
+                'btc_24h_return': btc_ret_24h
             }
-            print("--- Market Status Update (Strategy V152 Trend-Filtered BB Squeeze Breakout) ---")
+            print("--- Market Status Update (Strategy V153 Altcoin Decoupling & Large-Cap Squeeze) ---")
             print(f"BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -374,6 +374,8 @@ class TradingBot:
                     high_1h = pd.Series([float(k[2]) for k in kl_1h])
                     low_1h = pd.Series([float(k[3]) for k in kl_1h])
                     close_1h = pd.Series([float(k[4]) for k in kl_1h])
+                    vol_1h_series = pd.Series([float(k[5]) for k in kl_1h])
+                    qav_1h = pd.Series([float(k[7]) for k in kl_1h])
                     
                     cache_data = {}
                     if len(close_1h) >= 20:
@@ -381,14 +383,16 @@ class TradingBot:
                         cache_data.update({'atr_1h': atr_1h.iloc[-1]})
                         
                     if len(close_1h) >= 25 and 'atr_1h' in cache_data:
-                        trend_24h_pct = abs(close_1h.iloc[-1] - close_1h.iloc[-25]) / close_1h.iloc[-25]
                         atr_pct = atr_1h / close_1h
                         avg_hourly_range_pct = atr_pct.iloc[-24:].mean()
-                        er = trend_24h_pct / avg_hourly_range_pct if avg_hourly_range_pct > 0 else 1.0
                         
-                        cache_data.update({'er': er})
                         cache_data.update({'vol_1h': atr_pct.iloc[-1]})
                         cache_data.update({'vol_24h': avg_hourly_range_pct})
+                        
+                        cache_data.update({'altcoin_1h_volume': qav_1h.iloc[-1]})
+                        cache_data.update({'altcoin_avg_volume_usd': qav_1h.iloc[-24:].mean()})
+                        cache_data.update({'hourly_volume': vol_1h_series.iloc[-1]})
+                        cache_data.update({'vol_1h_avg_24h': vol_1h_series.iloc[-24:].mean()})
                         
                     if cache_data:
                         self.ema_cache[p] = cache_data
@@ -547,25 +551,13 @@ class TradingBot:
                     hold_seconds = time.time() - pos.get('time', time.time())
                     min_hold_passed = hold_seconds > 360 * 60  # 6 hours
                     
-                    setup = pos.get('setup')
-                    
-                    if setup == 'Trend_BB_Squeeze':
-                        # Trailing stop based on 3.0x ATR
-                        atr = self.positions[pair].get('entry_atr', cp * 0.001)
-                        mult = self.config.get('ATR_SL_MULT', 3.0)
-                        if hasattr(self, 'market_trend') and not self.market_trend.get('btc_uptrend_15m', True):
-                            mult = mult * 0.5
-                        trail_dist_price = max(mult * atr, cp * self.config.get('SL_MIN_PCT', 0.015))
-                        sl = max(sl, cp - trail_dist_price)
+                    if profit_pct > trail_trigger:
+                        sl = max(sl, cp * (1.0 - trail_dist))
                         self.positions[pair]['sl'] = sl
-                    else:
-                        if profit_pct > trail_trigger:
-                            sl = max(sl, cp * (1.0 - trail_dist))
-                            self.positions[pair]['sl'] = sl
-                        elif profit_pct > be_trigger and min_hold_passed:
-                            # Only move to breakeven after minimum hold period
-                            sl = max(sl, pos['entry_price'] * (1.0 + be_lock))
-                            self.positions[pair]['sl'] = sl
+                    elif profit_pct > be_trigger and min_hold_passed:
+                        # Only move to breakeven after minimum hold period
+                        sl = max(sl, pos['entry_price'] * (1.0 + be_lock))
+                        self.positions[pair]['sl'] = sl
                     
                     if sl != old_sl or self.positions[pair].get('max_p', 0) != old_max_p:
                         if time.time() - self.last_positions_save > 30:
@@ -574,20 +566,7 @@ class TradingBot:
 
                     take_profit = self.config.get('TAKE_PROFIT', 0.0)
                     
-                    max_hold_seconds = 86400 # 24h limit
-                    
-                    ema_data = self.ema_cache.get(pair, {})
-                    vol_1h = ema_data.get('vol_1h', 0.0)
-                    vol_24h = ema_data.get('vol_24h', 0.0)
-                    
-                    vol_spike_mult = self.config.get('VOL_SPIKE_MULTIPLIER', 1.5)
-                    if vol_1h > (vol_spike_mult * vol_24h) and profit_pct < 0:
-                        max_hold_seconds = 43200 # 12h limit
-                        
-                    if hold_seconds > max_hold_seconds:
-                        print(f"⏰ TIME EXIT: {pair} {max_hold_seconds//3600}h limit reached")
-                        await self.execute_trade(pair, 'SELL')
-                    elif take_profit > 0 and profit_pct >= take_profit:
+                    if take_profit > 0 and profit_pct >= take_profit:
                         print(f"💰 TAKE PROFIT: {pair} reached TP target")
                         await self.execute_trade(pair, 'SELL')
                     elif sl > 0 and cp <= sl:
@@ -618,9 +597,7 @@ class TradingBot:
             total_unrealized_usd += (current_p - pos['entry_price']) * pos['qty']
             current_equity += current_p * pos['qty']
             
-            if pos.get('time') and (time.time() - pos['time']) > 24 * 3600:
-                print(f"⏰ TIME EXIT: {p} held for >24h, closing position from central loop")
-                await self.execute_trade(p, 'SELL')
+            
             
         # Circuit breaker based on equity drawdown
         if not hasattr(self, 'equity_history'):
@@ -657,43 +634,36 @@ class TradingBot:
         cp = df['close'].iloc[-1]
 
         def calc_indicators(data):
-            c, h, l = data['close'], data['high'], data['low']
-            
-            sma30 = ta.sma(c, length=30).iloc[-1]
+            c = data['close']
             
             bb = ta.bbands(c, length=20, std=2.0)
             if bb is not None and not bb.empty:
                 bb_upper = bb['BBU_20_2.0_2.0'].iloc[-1]
                 
-                sma20 = bb['BBM_20_2.0_2.0']
+                sma20_series = bb['BBM_20_2.0_2.0']
+                sma20 = sma20_series.iloc[-1]
                 
-                bbw = (bb['BBU_20_2.0_2.0'] - bb['BBL_20_2.0_2.0']) / sma20
-                bbw_sma50 = ta.sma(bbw, length=50)
-                bbw_breakout_valid = bool(bbw.iloc[-1] > (1.5 * bbw_sma50.iloc[-1])) if not bbw_sma50.isna().iloc[-1] else True
-                
-                atr14 = ta.atr(h, l, c, length=14)
-                sqz_on = (bb['BBU_20_2.0_2.0'] < (sma20 + 1.5 * atr14)) & (bb['BBL_20_2.0_2.0'] > (sma20 - 1.5 * atr14))
-                sqz_recent = sqz_on.shift(1).rolling(15).max() > 0
-                bb_squeeze = bool((sqz_recent.iloc[-1]) and (not sqz_on.iloc[-1]))
+                bbw = (bb['BBU_20_2.0_2.0'] - bb['BBL_20_2.0_2.0']) / sma20_series
+                bb_width = bbw.iloc[-1]
+                bbw_sma30 = ta.sma(bbw, length=30).iloc[-1] if len(bbw) >= 30 else bb_width
             else:
+                sma20 = c.iloc[-1]
                 bb_upper = c.iloc[-1] * 1.1
-                bb_squeeze = False
-                bbw_breakout_valid = True
+                bb_width = 0.0
+                bbw_sma30 = 0.0
                 
-            return sma30, bb_upper, bb_squeeze, bbw_breakout_valid
+            return bb_upper, sma20, bb_width, bbw_sma30
 
         try:
-            sma30, bb_upper, bb_squeeze, bbw_breakout_valid = await asyncio.to_thread(calc_indicators, df)
+            bb_upper, sma20, bb_width, bbw_sma30 = await asyncio.to_thread(calc_indicators, df)
         except Exception as e:
             print(f"Indicator calculation error {pair}: {e}")
             return
             
-        ema_data = self.ema_cache.get(pair)
+        ema_data = self.ema_cache.get(pair, {})
         atr = cp * 0.01
-        er = 1.0
         if ema_data:
             atr = ema_data.get('atr_1h', cp * 0.01)
-            er = ema_data.get('er', 1.0)
             
         btc_uptrend_15m = self.market_trend.get('btc_uptrend_15m', True)
 
@@ -701,12 +671,8 @@ class TradingBot:
             self.current_indicators = {}
         self.current_indicators[pair] = {
             'atr': float(atr),
-            'er': float(er),
-            'sma30': float(sma30),
             'bb_upper': float(bb_upper),
-            'bb_squeeze': bool(bb_squeeze),
-            'btc_uptrend': bool(btc_uptrend_15m),
-            'bbw_breakout_valid': bool(bbw_breakout_valid)
+            'btc_uptrend': bool(btc_uptrend_15m)
         }
 
         # Strategy Trend BB Squeeze
@@ -724,13 +690,24 @@ class TradingBot:
             if active_count >= max_concurrent: return
             
             setup = None
-            
-            min_er = self.config.get('MIN_EFFICIENCY_RATIO', 0.3)
-            breakout_mult = self.config.get('BREAKOUT_VOL_MULT', 1.5)
-            
-            if cp > sma30 and bb_squeeze and cp > bb_upper + (atr * breakout_mult) and er > min_er and bbw_breakout_valid:
-                setup = "Trend_BB_Squeeze"
-                        
+
+            # 1. BTC-Conditioned Altcoin Volume Breakout
+            btc_ret = self.market_trend.get('btc_24h_return', 0.0)
+            alt_1h_vol = ema_data.get('altcoin_1h_volume', 0.0)
+            alt_avg_vol = ema_data.get('altcoin_avg_volume_usd', 0.0)
+            if -3.0 <= btc_ret <= 1.0:
+                if alt_1h_vol > 1.5 * alt_avg_vol:
+                    if cp > sma20:
+                        setup = "Altcoin_Decoupling"
+
+            # 2. Asset-Specific Bollinger Band Squeeze Breakout
+            if pair in ["BTCUSDT", "ETHUSDT"]:
+                hourly_vol = ema_data.get('hourly_volume', 0.0)
+                avg_vol = ema_data.get('vol_1h_avg_24h', 0.0)
+                
+                if bb_width < bbw_sma30:
+                    if cp > bb_upper and hourly_vol > 1.5 * avg_vol:
+                        setup = "LargeCap_BB_Squeeze"
             if setup:
                 volatility = atr / cp
                 mx_v = self.config.get('VOLATILITY_CAP', 0.015)
@@ -742,9 +719,7 @@ class TradingBot:
                 elif active_count == 2: size_strength = self.config.get('SCALE_2_POS', 0.6)
                 elif active_count >= 3: size_strength = self.config.get('SCALE_3_POS', 0.4)
                 
-                dow = datetime.datetime.utcnow().weekday()
-                if dow == 4:
-                    size_strength *= 1.5
+                
                     
                 if await self.execute_trade(pair, 'BUY', strength=size_strength, entry_atr=atr, setup_name=setup):
                     pass
@@ -783,13 +758,10 @@ class TradingBot:
                     risk_usd = total_eq * risk_pct
                     cp = self.data_1m[pair]['close'].iloc[-1]
                     
-                    # Sync SL distance logic with analyze() for accurate sizing
                     mult = self.config.get('ATR_SL_MULT', 2.5)
                     sl_min_pct = self.config.get('SL_MIN_PCT', 0.015)
-                    sl_max_pct = self.config.get('SL_MAX_PCT', 0.030)
                     sl_dist = (mult * entry_atr) if entry_atr else (cp * 0.02)
-                    # sl_max_pct
-                    sl_dist = min(max(sl_dist, cp * sl_min_pct), cp * sl_max_pct)
+                    sl_dist = max(sl_dist, cp * sl_min_pct)
                     
                     amt = (risk_usd / sl_dist) * cp
                     max_risk_cap = total_eq * (self.config['MAX_RISK_PER_TRADE_PERCENT'] / 100.0) * strength

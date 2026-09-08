@@ -1,4 +1,4 @@
-# Strategy V152 - Dynamic Trend-Filtered BB Squeeze Breakout
+# Strategy V153 - Altcoin Decoupling & Large-Cap Squeeze
 
 ## Overview
 Binance spot trading bot managed by an autonomous AI agent. The AI has full authority to research, discover, and deploy any statistically profitable entry setups (e.g., trend following, momentum breakouts, capitulation bounces) to maximize PnL and outperform a Bitcoin Buy-and-Hold baseline.
@@ -10,13 +10,12 @@ Binance spot trading bot managed by an autonomous AI agent. The AI has full auth
 - The AI is responsible for keeping the "Current Active Strategy" section below updated, but MUST ALWAYS preserve this "AI Evolution Mandate" section so future AIs do not lock themselves into a single strategy.
 
 ## Current Active Strategy
-- *Current Primary Setup (Trend_BB_Squeeze):* Close > SMA(30), BB Squeeze Active (BB inside KC), Close > Upper BB + (1H ATR * BREAKOUT_VOL_MULT), and Dynamic Volatility-Scaled Breakout valid (Current BBW > 1.5 * SMA(BBW, 50)).
-- *Filters:* 24H Dynamic Trend Efficiency Ratio > MIN_EFFICIENCY_RATIO. Graduated risk-scaling for downtrends (0.5x risk when 15m BTC Trend is DOWN).
-- *Time & Day Filters:* Rejected time-of-day filters. Prioritize DOW 4 (Friday) by scaling position sizes up by 1.5x on valid breakouts.
+- *Primary Setup 1 (Altcoin Decoupling):* Aggressive entry into altcoins when BTC is in a mild consolidation (-3% to +1%). Triggered if Altcoin 1H USD Volume > 1.5x 24H Avg Volume and Price > SMA(20).
+- *Primary Setup 2 (LargeCap BB Squeeze):* Targets BTC and ETH. Triggered if BB Width is below 30-period average, Price > Upper BB, and Hourly Volume > 1.5x 24H Avg Hourly Volume.
+- *Filters:* Massive PnL bleeders and historically low win-rate pairs heavily blacklisted. No TOD/DOW filters to prevent overfitting. Maintain Defensive Baseline (0.5x risk if BTC 15m trend is DOWN).
 
 ## Exit Logic
-- ATR-based trailing stop loss (3.0 * 1H ATR). Automatically tightens to 1.5 * 1H ATR in bearish regimes.
-- Take Profit at TAKE_PROFIT%
-- Time-based exit: positions held > 24 hours auto-closed. 
-- Volatility-Scaled Accelerated Time Exit: Max hold time reduced to 12 hours if Current 1H Volatility > 1.5x Rolling 24H Volatility and position is in loss.
-- Portfolio Guard: Global Eject at PORTFOLIO_EJECT%, Global Harvest at PORTFOLIO_HARVEST%, Circuit Breaker 4H Pause on >3 Fails or >1% 1H Drawdown
+- Percent-based trailing stop loss without rigid hard caps.
+- Take Profit at TAKE_PROFIT%.
+- Rejected Hold Limits: No strict time-based exits, allowing winners to run naturally.
+- Portfolio Guard: Global Eject at PORTFOLIO_EJECT%, Global Harvest at PORTFOLIO_HARVEST%, Circuit Breaker 4H Pause on >3 Fails or >1% 1H Drawdown.

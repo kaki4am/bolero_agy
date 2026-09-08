@@ -70,7 +70,16 @@ WHITELIST = {
     'audit_hygiene.sh',
     'hygiene_report.md',
     'audit_coherence.sh',
-    'coherence_report.md'
+    'coherence_report.md',
+    
+    # Extra Scripts & Ideas
+    'update_dashboard.py',
+    'update_gemini.py',
+    'fix_bot_entry.py',
+    'system_ideas.md',
+    'trade_ideas.md',
+    'price_ideas.md',
+    '.lesshst'
 }
 
 def run_cleanup():

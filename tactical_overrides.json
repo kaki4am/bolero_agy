@@ -6,9 +6,9 @@
     "blacklist_add": [],
     "whitelist_add": [
         "ZECUSDT",
-        "CREAMUSDT"
+        "SOLUSDT"
     ],
-    "rationale": "BTC is consolidating flat (-0.41%), maintaining normal risk parameters, while Reddit sentiment shows intense polarization and hype around Zcash's massive rally, warranting the addition of ZEC and top gainer CREAM to the whitelist.",
+    "rationale": "With BTC dipping slightly (-0.61%) and Reddit sentiment showing market fatigue and retail skepticism, maintaining baseline risk parameters while whitelisting high-volume, decoupled momentum altcoins like ZEC and SOL aligns with capital rotation strategies during macro consolidation.",
     "confidence": 0.95,
-    "learning_to_persist": "Reddit sentiment confirms that localized altcoin breakouts driven by new institutional catalysts can generate massive decoupled volume even during flat BTC consolidation."
+    "learning_to_persist": "Confirmed that during sub-1% BTC dips and widespread retail fatigue on Reddit, maintaining baseline risk while rotating into high-volume momentum outliers like ZEC or SOL remains optimal."
 }

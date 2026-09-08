@@ -26,13 +26,10 @@ SEARCH_SPACE = {
     'PORTFOLIO_EJECT': [-10.0, -5.0, -3.5],
     'PORTFOLIO_HARVEST': [4.0, 5.0, 8.0, 12.0],
     'SL_MIN_PCT': [0.010, 0.015, 0.020],
-    'SL_MAX_PCT': [0.020, 0.025, 0.030],
     'VOLATILITY_CAP': [0.015, 0.020, 0.025, 0.030],
     'SCALE_1_POS': [0.8, 1.0],
     'SCALE_2_POS': [0.6, 0.8],
-    'SCALE_3_POS': [0.4, 0.6],
-    'MIN_EFFICIENCY_RATIO': [0.8, 1.0, 1.2, 1.5],
-    'BREAKOUT_VOL_MULT': [0.05, 0.1, 0.2, 0.3]
+    'SCALE_3_POS': [0.1, 0.2, 0.3, 0.4]
 }
 
 def save_config(params):
@@ -257,14 +254,11 @@ async def optimize():
             'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
             'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 20.0),
             'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.050),
-            'SL_MAX_PCT': trial.suggest_float('SL_MAX_PCT', 0.020, 0.030),
             'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.200),
             'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.050),
             'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),
             'SCALE_2_POS': trial.suggest_float('SCALE_2_POS', 0.3, 0.8),
-            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6),
-            'MIN_EFFICIENCY_RATIO': trial.suggest_float('MIN_EFFICIENCY_RATIO', 0.1, 0.6),
-            'BREAKOUT_VOL_MULT': trial.suggest_float('BREAKOUT_VOL_MULT', 0.05, 0.5)
+            'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6)
         }
         
         train_profit = bt_train.run(params)
