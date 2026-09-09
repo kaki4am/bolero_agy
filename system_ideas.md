@@ -1,14 +1,13 @@
-Based on the system health, logs, and performance data, here are the structural and risk management proposals:
+Based on the provided health, performance, and log data, here are the proposed structural and risk management changes:
 
-**1. Critical System Fixes**
-*   **Fix Config Reloader Crash:** The `trading-bot` logs show a recurring `UnboundLocalError` for `asyncio` in `bot.py` (`config_reloader_loop`). The `asyncio` module is not properly imported in that scope. This must be fixed to ensure the bot can dynamically reload configurations without background task failures.
-*   **Blacklist Restricted Symbols:** Immediately add `CFGUSDT` and `IOUSDT` to the global blacklist. Both are throwing `apierror(code=-2010): this symbol is not permitted for this account`, causing wasted API calls and failed trade execution.
+**1. Implement Time-Decaying Take-Profit (Capital Velocity Guard)**
+*   **Observation:** Fast trades (e.g., ATOMUSDT: +5.8% in 3.5h, CAKEUSDT: +3.6% in 2.7h) are highly efficient. Conversely, assets like BICOUSDT (+4.2% in 221h), ETHUSDT (337h), and ETCUSDT (328h) tie up capital for weeks with minimal or negative returns.
+*   **Proposal:** Since hard 72h hold limits were previously rejected, implement a *soft* time-based capital reallocation. Gradually lower the Take-Profit target threshold as hold duration increases beyond 48 hours to accelerate capital recycling into high-momentum targets like CREAM and ZEC. 
 
-**2. Risk Management & Portfolio Guards**
-*   **Maintain Defensive Baseline (BTC Trend: DOWN):** Keep current tactical overrides (`Risk Mult=0.8`, `SL Offset=-0.1`). Previous learnings confirm that a 0.5 risk exposure during downtrends performs better than 0.2, allowing the bot to catch sudden reversals without over-exposing capital.
-*   **Avoid Over-Tightening Stops:** Do not implement hard stop-loss caps (e.g., -3.0%) or volatility-adjusted ADX trailing stops, as backtests and previous learnings show these cause premature exits during routine volatility and degrade performance.
-*   **Target Decoupled Alpha:** As retail sentiment remains in a cautious "wait-and-see" accumulation phase, continue aggressively force-tracking and whitelisting decoupled, news-driven altcoins (e.g., `ZECUSDT`, `CREAMUSDT`). These assets are proving to generate localized momentum independent of the broader BTC consolidation. 
+**2. Dynamic Drawdown Floor (Tail-Risk Stop Loss)**
+*   **Observation:** While a hard -3.0% SL cap was rejected for causing premature exits, the RENDERUSDT trade resulted in a -7.01% loss over 41 hours. 
+*   **Proposal:** Establish an absolute portfolio-level structural floor (e.g., -6.0% to -8.0%) specifically for extended-duration trades. This acts as a disaster guard for slow-bleeding assets without interfering with normal volatility during fast breakouts.
 
-**3. Structural Observations**
-*   **Performance Monitoring:** The last 24h PnL is negative (-$8.59), with the majority of completed trades hitting stop-losses. If the win rate continues to degrade under the current BTC 15m downtrend, consider temporarily pausing new entries for non-whitelisted pairs until the 15m trend flips neutral/up.
-*   **Tuner Validation:** The Optuna tuner is healthy and recently found a new best train score of 12.09%. Ensure these parameters are rigorously forward-tested out-of-sample before deployment, as previous structural changes severely degraded live performance.
+**3. Portfolio Guard: Stale Trend Exposure**
+*   **Observation:** The 15m BTC trend is DOWN, yet baseline risk is maintained to catch altcoin decoupling (which is working well overall with ~29.3% train scores).
+*   **Proposal:** Introduce a "Stale Asset" guard. If an asset is held for > 72 hours and its 15m/1h momentum turns negatively correlated with the targeted decoupled altcoin index, trigger an early exit. This frees up margin for the highly active 46-pair whitelist currently being tracked.

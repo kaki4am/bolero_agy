@@ -5,10 +5,12 @@
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
+        "CREAMUSDT",
+        "PNTUSDT",
         "ZECUSDT",
         "SOLUSDT"
     ],
-    "rationale": "With BTC dipping slightly (-0.61%) and Reddit sentiment showing market fatigue and retail skepticism, maintaining baseline risk parameters while whitelisting high-volume, decoupled momentum altcoins like ZEC and SOL aligns with capital rotation strategies during macro consolidation.",
+    "rationale": "With BTC seeing a minor sub-1% dip and Reddit exhibiting a cautiously optimistic 'wait-and-see' sentiment amidst macro anxiety, maintaining full baseline risk optimally captures capital rotation into surging, high-volume altcoin breakouts.",
     "confidence": 0.95,
-    "learning_to_persist": "Confirmed that during sub-1% BTC dips and widespread retail fatigue on Reddit, maintaining baseline risk while rotating into high-volume momentum outliers like ZEC or SOL remains optimal."
+    "learning_to_persist": "Confirmed that during a -0.69% BTC dip with cautious but optimistic Reddit sentiment, maintaining full baseline risk to target high-volume decoupled rotators like CREAM and ZEC continues to be the optimal alpha-capture strategy."
 }

@@ -1,22 +1,18 @@
-### Market Data Analysis
-1. **Volatility vs. Consolidation:** There is a clear inverse relationship between asset market cap and both hourly volatility and 30-day trend percentages. High-cap assets (BTC, ETH) exhibit extremely high Bollinger Band squeeze counts (539 and 465, respectively), indicating prolonged consolidation periods. Low-cap assets (NEAR, LINK) show significantly higher volatility and trend momentum with very few squeezes.
-2. **Decoupling Altcoins:** Recent learnings strongly emphasize that during periods of mild BTC consolidation or slight retracement (-1% to -3%), high-volume altcoins decouple and present major momentum opportunities driven by localized sentiment and fundamentals. 
-3. **Failed Previous Attempts:** Relying on strict rigid filters (time-of-day, hard -3.0% stops, tight ADX trailing stops, 3.0*ATR stops) uniformly fails by causing premature exits during normal market noise. 
+**MARKET ANALYSIS**
+The data reveals a stark divergence between high-liquidity majors (BTC/ETH) and mid-cap altcoins (LINK/NEAR). BTC and ETH show prolonged consolidation (high BB squeeze counts: 542/471, lower 30d trends: ~21-30%), while altcoins exhibit massive momentum and volatility (LINK/NEAR 30d trends: 44-52%, hourly volatility: 0.8-1.1). Recent sentiment data repeatedly validates capturing "decoupled, high-volume altcoin breakouts" while BTC flatlines or dips mildly (< 1%). 
 
-### Proposed New Signals / Filters
+**PROPOSED FILTERS/SIGNALS**
 
-**1. BTC-Conditioned Altcoin Volume Breakout (Entry Filter)**
-*   **Rationale:** Capitalizes on the observed altcoin decoupling during macro "wait-and-see" periods without applying rigid overarching stop-losses.
-*   **Logic:** Allow aggressive altcoin entries only if BTC is in a mild consolidation or slight dip phase, confirming that the altcoin's move is a localized rotation rather than a macro pump.
-*   **Proposed Parameters:** 
-    *   `btc_24h_return` is between `-3.0%` and `+1.0%`.
-    *   `altcoin_1h_volume` > `1.5 * altcoin_avg_volume_usd` (to confirm decoupling momentum).
-    *   `altcoin_price` > `SMA(20)` (to ensure it's in an uptrend).
+**1. Relative Strength Decoupling Filter (Entry Filter)**
+*   **Logic:** Since the most profitable strategy right now is targeting altcoins that ignore macro BTC weakness, we should explicitly filter for structural decoupling before entry. 
+*   **Indicators & Parameters:** 
+    *   `Altcoin 24h Return % > (BTC 24h Return % + 2.5%)`
+    *   `Altcoin 24h Volume > SMA(Altcoin 24h Volume, 7)`
+    *   *Purpose:* Ensures capital is only deployed into altcoins actively demonstrating relative strength and institutional/retail rotation, avoiding stagnant assets.
 
-**2. Asset-Specific Bollinger Band Squeeze Breakout (Entry Signal)**
-*   **Rationale:** BTC and ETH spend massive amounts of time in consolidation (BB Squeeze counts > 450). Instead of standard trend-following which may chop during these periods, wait for the squeeze to definitively break on high volume.
-*   **Logic:** Trigger entries on high-cap assets when a prolonged squeeze resolves upward.
-*   **Proposed Parameters:**
-    *   Target Assets: `BTCUSDT`, `ETHUSDT` (or any asset with `bb_squeeze_count_30d > 400`).
-    *   Condition: `BB_Width < 30-period average BB_Width` (identifies the squeeze).
-    *   Trigger: Hourly candle closes above the `Upper Bollinger Band` AND `Hourly Volume > 1.5 * 24h_Avg_Hourly_Volume`.
+**2. Volume-Anomaly Squeeze Breakout (Entry Signal)**
+*   **Logic:** Given the high number of BB squeezes across the board and the retail "wait-and-see" fatigue, many breakouts will be false or lack follow-through unless backed by immediate, localized capital rotation.
+*   **Indicators & Parameters:**
+    *   `Current Hourly Volume > 1.5 * SMA(Hourly Volume, 24)` 
+    *   Must occur concurrently with a **Bollinger Band Squeeze Exit** (e.g., price closing outside the upper Bollinger Band while Bands are expanding).
+    *   *Purpose:* Filters out low-conviction fake-outs during flat BTC consolidation, ensuring we only enter momentum trades when significant volume confirms the move.
