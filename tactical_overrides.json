@@ -1,16 +1,16 @@
 {
-    "RISK_MULTIPLIER": 1.0,
-    "SL_MULT_OFFSET": 0.0,
+    "RISK_MULTIPLIER": 0.8,
+    "SL_MULT_OFFSET": -0.1,
     "VOL_SPIKE_MULT_OFFSET": 0.0,
-    "PORTFOLIO_EJECT_OFFSET": 0.0,
+    "PORTFOLIO_EJECT_OFFSET": 0.5,
     "blacklist_add": [],
     "whitelist_add": [
         "CREAMUSDT",
-        "PNTUSDT",
         "ZECUSDT",
+        "RAYUSDT",
         "SOLUSDT"
     ],
-    "rationale": "With BTC seeing a minor sub-1% dip and Reddit exhibiting a cautiously optimistic 'wait-and-see' sentiment amidst macro anxiety, maintaining full baseline risk optimally captures capital rotation into surging, high-volume altcoin breakouts.",
+    "rationale": "Aligning with cautious Reddit sentiment over hot PPI data and rising bond yields during this nearly 2% BTC dip, we are gently reducing risk and tightening stops while continuing to whitelist highly decoupled, high-volume altcoins and narrative memecoins to balance capital preservation with targeted momentum capture.",
     "confidence": 0.95,
-    "learning_to_persist": "Confirmed that during a -0.69% BTC dip with cautious but optimistic Reddit sentiment, maintaining full baseline risk to target high-volume decoupled rotators like CREAM and ZEC continues to be the optimal alpha-capture strategy."
+    "learning_to_persist": "Confirmed that during a near -2% BTC dip driven by macroeconomic pressure, gently reducing risk while maintaining exposure to strongly decoupled top gainers and narrative memecoins efficiently balances defense with alpha capture, in line with cautious Reddit sentiment."
 }

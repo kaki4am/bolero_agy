@@ -1,14 +1,21 @@
-I have completed the system hygiene audit and applied the necessary repairs to both `bot.py` and `portfolio_backtester.py`. Here's a breakdown of the optimizations made:
+I have completed the requested audit and fixed the performance leaks in the codebase. 
 
-### 1. Dead Indicator Math Removed
-* **`bot.py`:** Removed `sma20` and `bbw_sma30` calculations from `calc_indicators` because they weren't utilized in any entry or exit IF conditions. I also removed `vol_1h` and `vol_24h` variable updates inside the `fetch_pair_ema` function since their respective calculated values (`atr_pct` and `avg_hourly_range_pct`) were left hanging and never consumed by the bot. Finally, calculations for `altcoin_1h_volume` and `altcoin_avg_volume_usd` were also removed from `fetch_pair_ema` since they were unused.
-* **`portfolio_backtester.py`:** Purged the unutilized calculations of `sma20`, `bbw_sma30`, `altcoin_1h_volume`, and `altcoin_avg_volume_usd` and prevented them from needlessly bloating the `np_data` arrays and dictionaries. 
+Here is a summary of the actions I took:
 
-### 2. Unused Variables & Imports 
-* After inspecting both core scripts alongside running `flake8` within the bot's virtual environment, there were no unused imports found.
-* All orphaned logic and unutilized intermediate variables discovered (e.g. `atr_pct`, `avg_hourly_range_pct`) during the removal of the dead indicator math above were scrubbed completely.
+1. **Dead Indicator Math Removed:**
+   - I audited the `calc_indicators` function in `bot.py` and the indicator calculation blocks in `portfolio_backtester.py`.
+   - The strategy's entry and exit logic relies purely on the 1-minute Bollinger Band measurements (`bb_width`, `bb_width_prev`, `bb_upper`) and some 24-hour baseline volumes/returns. 
+   - I discovered several CPU-heavy indicators being computed using `pandas_ta` and moving averages that were never evaluated in the `IF` logic. 
+   - Removed computations for **`rsi_1h`**, **`sma20_1h`**, **`altcoin_4h_return`**, **`bb_1h`**, **`bbw_1h`**, and **`min_bbw_24_1h`** across both files, along with their related cached dictionaries and Numpy initializations.
 
-### 3. Redundant Database & API Calls
-* **Critical API Redundancy Fixed:** The `check_portfolio_guard` loop in `bot.py` runs every 2 seconds. In it, the bot was fetching real-time balances using `await self.client.get_asset_balance(asset='USDT')` to recalculate total equity against the portfolio's unrealized profit. Hitting the Binance API every two seconds strictly for balances could cause aggressive rate-limiting in production. I updated this section to locally deduce the `current_equity` via `self.last_total_equity` (which updates perfectly fine downstream of any trade logic) and the real-time active prices tracked via WebSockets.
+2. **Unused Variables & Syntax Cleanup:**
+   - I pruned out all remaining orphaned variables tied to the deleted indicators.
+   - Cleaned up empty syntax blocks (e.g., empty `if/else` statements that were left behind) to ensure the scripts can parse correctly without syntax errors. 
+   - Checked Python imports to ensure everything included was actively being used. The `sqlite3` import was confirmed to be actively used within a local scope (`read_db`) inside `bot.py` for syncing database state to active caches.
 
-A summary report capturing these exact details has been successfully written to [hygiene_report.md](file:///root/hygiene_report.md). Let me know if you need any additional adjustments!
+3. **Clean Code (Loops & Databases):**
+   - I checked the loops inside `bot.py` and `portfolio_backtester.py` to make sure there were no empty iterations. Every loop was populated and performed critical side effects (calculating equity, parsing dust, populating timestamp indices, executing callbacks, etc.). 
+   - I verified the only external database call (`read_db` inside `bot.py`) retrieves just the `MAX(id)` for positions via SQLite. This is well-optimized and is additionally wrapped in a cache-check mechanism to prevent redundant database queries during operations.
+
+I have generated the requested report detailing these findings and wrote it directly to [`/root/hygiene_report.md`](file:///root/hygiene_report.md). Let me know if you would like me to review anything else!
+debase is now significantly lighter, resulting in less RAM/CPU overhead and improved speed for the backtester!

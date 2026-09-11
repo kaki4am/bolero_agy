@@ -1,13 +1,11 @@
-Based on the provided health, performance, and log data, here are the proposed structural and risk management changes:
+**SYSTEM HEALTH & LOG ANALYSIS**
+*   **Health:** Services are OK. Optuna is finding better parameters (Train Score: 44.07%).
+*   **Performance:** Poor 24h performance (-16.57 USDT Realized PnL, 3 wins / 7 losses). Losses (-8.06% on ATOM) are significantly outweighing gains (+1.46% on TRX). 
+*   **Errors:** API limits hitting restricted symbols (REZ, ANIME, SAGA) and invalid symbols (LAPTOPUSDT) forced into the whitelist.
 
-**1. Implement Time-Decaying Take-Profit (Capital Velocity Guard)**
-*   **Observation:** Fast trades (e.g., ATOMUSDT: +5.8% in 3.5h, CAKEUSDT: +3.6% in 2.7h) are highly efficient. Conversely, assets like BICOUSDT (+4.2% in 221h), ETHUSDT (337h), and ETCUSDT (328h) tie up capital for weeks with minimal or negative returns.
-*   **Proposal:** Since hard 72h hold limits were previously rejected, implement a *soft* time-based capital reallocation. Gradually lower the Take-Profit target threshold as hold duration increases beyond 48 hours to accelerate capital recycling into high-momentum targets like CREAM and ZEC. 
+**STRUCTURAL & RISK PROPOSALS**
 
-**2. Dynamic Drawdown Floor (Tail-Risk Stop Loss)**
-*   **Observation:** While a hard -3.0% SL cap was rejected for causing premature exits, the RENDERUSDT trade resulted in a -7.01% loss over 41 hours. 
-*   **Proposal:** Establish an absolute portfolio-level structural floor (e.g., -6.0% to -8.0%) specifically for extended-duration trades. This acts as a disaster guard for slow-bleeding assets without interfering with normal volatility during fast breakouts.
-
-**3. Portfolio Guard: Stale Trend Exposure**
-*   **Observation:** The 15m BTC trend is DOWN, yet baseline risk is maintained to catch altcoin decoupling (which is working well overall with ~29.3% train scores).
-*   **Proposal:** Introduce a "Stale Asset" guard. If an asset is held for > 72 hours and its 15m/1h momentum turns negatively correlated with the targeted decoupled altcoin index, trigger an early exit. This frees up margin for the highly active 46-pair whitelist currently being tracked.
+1.  **Strict Symbol Blacklisting:** Immediately remove `LAPTOPUSDT`, `REZUSDT`, `ANIMEUSDT`, and `SAGAUSDT` from all whitelists and tracking to prevent API rate limit penalties (-2010 and -1121 errors). 
+2.  **Adjust Risk Multiplier:** With a BTC 15m DOWN trend and poor recent hit rate, decrease the tactical `Risk Mult` further from 0.8 to 0.5 or 0.6 until market decoupling proves profitable again.
+3.  **Implement a Soft Portfolio Guard (Stop-Loss):** While a strict -3.0% SL was rejected, an -8.06% loss (ATOM) is skewing the R:R ratio. Implement a dynamic or slightly wider hard guard (e.g., -5.0%) to prevent outlier bleeding without choking routine volatility.
+4.  **Aggressive Trailing Take-Profit:** Winners are returning <1.5% while losers draw down >4%. Tighten trailing take-profits on narrative/decoupled altcoins to secure early momentum spikes before they revert.

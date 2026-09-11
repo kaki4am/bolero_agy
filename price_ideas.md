@@ -1,18 +1,22 @@
-**MARKET ANALYSIS**
-The data reveals a stark divergence between high-liquidity majors (BTC/ETH) and mid-cap altcoins (LINK/NEAR). BTC and ETH show prolonged consolidation (high BB squeeze counts: 542/471, lower 30d trends: ~21-30%), while altcoins exhibit massive momentum and volatility (LINK/NEAR 30d trends: 44-52%, hourly volatility: 0.8-1.1). Recent sentiment data repeatedly validates capturing "decoupled, high-volume altcoin breakouts" while BTC flatlines or dips mildly (< 1%). 
+### Market Data & Sentiment Analysis
+1. **Prolonged Macro Consolidation**: High Bollinger Band (BB) squeeze counts in major caps (BTC: 547, ETH: 476) perfectly align with the observed "wait-and-see" retail sentiment and flat BTC conditions.
+2. **High-Beta Alpha Exists**: Altcoins like NEAR and LINK show massive 30-day trends (44% and 31%) and high daily ranges, confirming that capital is aggressively rotating into decoupled assets despite BTC's chop. 
+3. **Avoid Over-Restriction**: Previous failures (time/day filters, tight trailing stops, rigid ATRs) prove the strategy needs room to breathe to capture massive decoupled moves without being prematurely stopped out by routine volatility.
 
-**PROPOSED FILTERS/SIGNALS**
+### Proposed Signals/Filters
 
-**1. Relative Strength Decoupling Filter (Entry Filter)**
-*   **Logic:** Since the most profitable strategy right now is targeting altcoins that ignore macro BTC weakness, we should explicitly filter for structural decoupling before entry. 
-*   **Indicators & Parameters:** 
-    *   `Altcoin 24h Return % > (BTC 24h Return % + 2.5%)`
-    *   `Altcoin 24h Volume > SMA(Altcoin 24h Volume, 7)`
-    *   *Purpose:* Ensures capital is only deployed into altcoins actively demonstrating relative strength and institutional/retail rotation, avoiding stagnant assets.
+**1. Decoupled Relative Strength (DRS) Volume Filter (Entry Filter)**
+*   **Concept**: Mechanically identify the "decoupled, high-volume altcoin breakouts" highlighted in the AI manager logs, specifically during BTC retracements (-1% to -3%).
+*   **Indicators**: 4-hour Relative Return vs BTC, and 1-hour Volume Moving Average (VMA).
+*   **Parameters**:
+    *   `Altcoin_4h_Return > (BTC_4h_Return + 2.5%)` 
+    *   `Current_1h_Volume > 2.5 * SMA(1h_Volume, 24)`
+*   **Logic**: Only authorize aggressive altcoin long entries during BTC weakness if the asset proves it is completely ignoring macro gravity via a strict volume anomaly and significant price outperformance.
 
-**2. Volume-Anomaly Squeeze Breakout (Entry Signal)**
-*   **Logic:** Given the high number of BB squeezes across the board and the retail "wait-and-see" fatigue, many breakouts will be false or lack follow-through unless backed by immediate, localized capital rotation.
-*   **Indicators & Parameters:**
-    *   `Current Hourly Volume > 1.5 * SMA(Hourly Volume, 24)` 
-    *   Must occur concurrently with a **Bollinger Band Squeeze Exit** (e.g., price closing outside the upper Bollinger Band while Bands are expanding).
-    *   *Purpose:* Filters out low-conviction fake-outs during flat BTC consolidation, ensuring we only enter momentum trades when significant volume confirms the move.
+**2. Volatility Expansion Squeeze Breakout (Entry Signal)**
+*   **Concept**: Capitalize on the high BB squeeze counts by catching the exact moment retail capital rotates into an asset, triggering a momentum explosion.
+*   **Indicators**: Bollinger Bandwidth (BBB) (Length 20, Multiplier 2) + RSI (14).
+*   **Parameters**:
+    *   `BB_Bandwidth > 1.5 * Min(BB_Bandwidth, 24)` (Bandwidth expands by 50% from its 24-hour low).
+    *   `RSI(14) > 65` (Confirming strong upward momentum).
+*   **Logic**: Triggers an entry exactly when a prolonged consolidation (squeeze) breaks upward with strong retail momentum, capturing the narrative-driven runs before they hit peak saturation.

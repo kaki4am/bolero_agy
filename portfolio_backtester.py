@@ -13,7 +13,9 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V154 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V155 Indicators...")
+        blacklist = ['PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'VETUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT']
+        self.pair_data = {k: v for k, v in self.pair_data.items() if k not in blacklist}
         total = len(self.pair_data)
         
         # Pre-align BTC Trend to 1m resolution
@@ -22,10 +24,12 @@ class PortfolioBacktester:
             btc_15m_shifted['timestamp'] = btc_15m_shifted['timestamp'] + pd.Timedelta(minutes=15)
             btc_15m_indexed = btc_15m_shifted.set_index('timestamp')
             btc_15m_indexed['btc_24h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(96)) / btc_15m_indexed['close'].shift(96) * 100
+            btc_15m_indexed['btc_4h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(16)) / btc_15m_indexed['close'].shift(16) * 100
             
             self.btc_trend_aligned = pd.DataFrame({
                 'uptrend_15m': btc_15m_indexed['close'] > btc_15m_indexed['ema200'],
-                'btc_24h_return': btc_15m_indexed['btc_24h_return']
+                'btc_24h_return': btc_15m_indexed['btc_24h_return'],
+                'btc_4h_return': btc_15m_indexed['btc_4h_return']
             })
         else:
             self.btc_trend_aligned = None
@@ -68,11 +72,8 @@ class PortfolioBacktester:
             df_1h['altcoin_24h_return'] = (df_1h['close'] - df_1h['close'].shift(24)) / df_1h['close'].shift(24) * 100
             df_1h['altcoin_24h_volume'] = df_1h['qav'].rolling(24, min_periods=1).sum()
             df_1h['altcoin_24h_vol_sma7'] = df_1h['altcoin_24h_volume'].rolling(24*7, min_periods=1).mean()
-            df_1h['sma20_1h'] = df_1h['close'].rolling(20, min_periods=1).mean()
+            
                 
-            # Dynamic Trend Efficiency Filter (Chop Filter)
-            if len(df_1h) >= 24:
-                pass
 
             df_1h['timestamp'] = df_1h['timestamp'] + pd.Timedelta(hours=1)
             df_1h_idx = df_1h.set_index('timestamp')
@@ -91,7 +92,6 @@ class PortfolioBacktester:
             indicators['altcoin_24h_return'] = df_1h_idx['altcoin_24h_return'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['altcoin_24h_volume'] = df_1h_idx['altcoin_24h_volume'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['altcoin_24h_vol_sma7'] = df_1h_idx['altcoin_24h_vol_sma7'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['sma20_1h'] = df_1h_idx['sma20_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(df_1m['close'])
 
             self.precalculated_indicators[symbol] = indicators
 
@@ -133,10 +133,10 @@ class PortfolioBacktester:
                 'hourly_volume': ind['hourly_volume'].values,
                 'vol_1h_avg_24h': ind['vol_1h_avg_24h'].values,
                 'btc_24h_return': ind['btc_safe']['btc_24h_return'].values if 'btc_24h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values,
+                'btc_4h_return': ind['btc_safe']['btc_4h_return'].values if 'btc_4h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values,
                 'altcoin_24h_return': ind['altcoin_24h_return'].values,
                 'altcoin_24h_volume': ind['altcoin_24h_volume'].values,
                 'altcoin_24h_vol_sma7': ind['altcoin_24h_vol_sma7'].values,
-                'sma20_1h': ind['sma20_1h'].values,
                 'bb_width_prev': pd.Series(ind['bb_width']).shift(1).fillna(0).values
             }
 
@@ -239,21 +239,14 @@ class PortfolioBacktester:
                     exit_reason = None
                     take_profit = pos.get('tp', params.get('TAKE_PROFIT', 0.0))
                     
-                    # Time-Decaying Take-Profit (> 48h)
-                    if hold_time_m > 48 * 60:
-                        decay_factor = min(1.0, (hold_time_m - 48*60) / (72*60))  # Decays to 0 over 72h
-                        take_profit = take_profit * (1.0 - decay_factor)
+                    
                         
                     # Dynamic Drawdown Floor for extended duration (-7%)
                     if hold_time_m > 24 * 60 and current_profit_pct <= -0.07:
                         exit_reason = "TailRiskSL"
                         exit_price = price * (1.0 - slippage_pct)
                         
-                    # Stale Trend Exposure (> 72h and momentum negative)
-                    if not exit_reason and hold_time_m > 72 * 60:
-                        if price < s_data['sma20_1h'][idx]:
-                            exit_reason = "StaleTrend"
-                            exit_price = price * (1.0 - slippage_pct)
+                    
                     
                     if not exit_reason:
                         if s_data['low'][idx] <= old_sl:
@@ -296,19 +289,14 @@ class PortfolioBacktester:
                     alt_24h_vol = s_data['altcoin_24h_volume'][idx]
                     alt_24h_vol_sma7 = s_data['altcoin_24h_vol_sma7'][idx]
                     
-                    # 1. Relative Strength Decoupling Filter (Entry Filter)
-                    # Altcoin 24h Return % > (BTC 24h Return % + 2.5%) and Altcoin 24h Volume > SMA(Altcoin 24h Volume, 7)
                     if alt_24h_ret > (btc_ret + 2.5) and alt_24h_vol > alt_24h_vol_sma7:
-                        # 2. Volume-Anomaly Squeeze Breakout (Entry Signal)
-                        # Current Hourly Volume > 1.5 * SMA(Hourly Volume, 24)
                         hourly_vol = s_data['hourly_volume'][idx]
                         avg_vol = s_data['vol_1h_avg_24h'][idx]
                         if hourly_vol > 1.5 * avg_vol:
-                            # Squeeze Exit: price > bb_upper and bands expanding
                             bb_width_prev = s_data['bb_width_prev'][idx]
                             bbw = s_data['bb_width'][idx]
                             if price > bb_upper and bbw > bb_width_prev:
-                                setup = "Decoupled_Squeeze_Breakout"
+                                setup = "Decoupled_Squeeze_Breakout" 
 
                     if setup:
                         volatility = atr / price
@@ -333,6 +321,8 @@ class PortfolioBacktester:
                             sl_min_pct = params.get('SL_MIN_PCT', 0.015)
                             sl_dist_price = mult * atr
                             sl_dist_price = max(sl_dist_price, price * sl_min_pct)
+                            sl_max_pct = params.get('SL_MAX_PCT', 0.05)
+                            sl_dist_price = min(sl_dist_price, price * sl_max_pct)
                             
                             target_qty = risk_usd / sl_dist_price
                             trade_amount = target_qty * price

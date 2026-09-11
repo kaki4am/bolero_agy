@@ -79,7 +79,29 @@ WHITELIST = {
     'system_ideas.md',
     'trade_ideas.md',
     'price_ideas.md',
-    '.lesshst'
+    '.lesshst',
+    'patch_bt_blacklist.py',
+    'patch_bt_revert_entry.py',
+    'patch_bot.py',
+    'patch_bot_revert_entry.py',
+    'patch_bt.py',
+    'patch_trail2.py',
+    'patch_risk.py',
+    'patch_trail.py',
+    'patch_rejects.py',
+    'patch.py',
+    'patch_revert_trail.py',
+    'patch_revert.py',
+    'patch_gemini.py',
+    '.zshrc',
+    'patch_bot2.py',
+    'patch_version.py',
+    'patch_config2.py',
+    'patch_bt2.py',
+    'patch_sl_max.py',
+    'fix_indent.py',
+    '.zcompdump',
+    'patch_eject.py'
 }
 
 def run_cleanup():

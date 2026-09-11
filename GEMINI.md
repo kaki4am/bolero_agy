@@ -1,4 +1,4 @@
-# Strategy V154 - Decoupled Altcoin Squeeze
+# Strategy V155 - Decoupled Altcoin Squeeze
 
 ## Overview
 Binance spot trading bot managed by an autonomous AI agent. The AI has full authority to research, discover, and deploy any statistically profitable entry setups (e.g., trend following, momentum breakouts, capitulation bounces) to maximize PnL and outperform a Bitcoin Buy-and-Hold baseline.
@@ -17,7 +17,5 @@ Binance spot trading bot managed by an autonomous AI agent. The AI has full auth
 
 ## Exit Logic
 - **Hold Time Dynamics**: Percent-based trailing stop loss and breakeven rules are ignored during the first 6 hours to prevent premature stop-outs and allow trades to mature.
-- **Time-Decaying Take-Profit**: Gradually lower Take-Profit target threshold as hold duration increases beyond 48 hours to accelerate capital recycling.
 - **Dynamic Drawdown Floor**: Absolute portfolio-level structural floor (-7.0%) specifically for extended-duration trades (>24h).
-- **Stale Trend Exposure Guard**: If an asset is held for > 72 hours and its 1H momentum turns negative (Price < SMA20 1H), trigger an early exit.
 - **Portfolio Guard**: Global Eject at PORTFOLIO_EJECT%, Global Harvest at PORTFOLIO_HARVEST%, Circuit Breaker 4H Pause on >3 Fails or >1% 1H Drawdown.

@@ -48,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V154 Altcoin Decoupling & Large-Cap Squeeze
+        # Strategy V155 Altcoin Decoupling & Large-Cap Squeeze
         self.config = {
             'MIN_VOLATILITY': 0.001,
             'BASE_RISK_PERCENT': 4.611576631674215,
@@ -162,6 +162,7 @@ class TradingBot:
         tickers = await self.client.get_ticker()
         price_map = {t['symbol']: float(t['lastPrice']) for t in tickers}
         
+        self.last_free_usdt = usdt_free
         total_val = usdt_free
         for pair, pos in self.positions.items():
             if pos.get('entries', 0) > 0:
@@ -173,7 +174,7 @@ class TradingBot:
         usdt_pairs = [t for t in tickers if t['symbol'].endswith('USDT')]
         
         blacklisted = ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'EURUSDT', 'USDTUSDT', 'BUSDUSDT', 'DAIUSDT', 
-                       'SOLUSDT', 'AVAXUSDT', 'PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'LUNCUSDT',
+                       'AVAXUSDT', 'PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'LUNCUSDT', 'VETUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT',
                        'FETUSDT', 'INJUSDT', 'NEARUSDT', 'DOTUSDT', 'FILUSDT', 'LDOUSDT', 'XECUSDT', 'SHIBUSDT', 'DODOUSDT',
                        'WLDUSDT', 'ADAUSDT', 'LINKUSDT', 'XRPUSDT', 'LTCUSDT',
                        'HFTUSDT', 'PEOPLEUSDT', 'ONGUSDT', 'SYNUSDT', 'COTIUSDT', 'CRVUSDT',
@@ -358,12 +359,14 @@ class TradingBot:
             ema200_15m = ta.ema(closes_15m, length=200).iloc[-1]
             btc_cp_15m = closes_15m.iloc[-1]
             btc_ret_24h = (btc_cp_15m - closes_15m.iloc[-97]) / closes_15m.iloc[-97] * 100 if len(closes_15m) > 96 else 0.0
+            btc_ret_4h = (btc_cp_15m - closes_15m.iloc[-17]) / closes_15m.iloc[-17] * 100 if len(closes_15m) > 16 else 0.0
 
             self.market_trend = {
                 'btc_uptrend_15m': btc_cp_15m > ema200_15m,
-                'btc_24h_return': btc_ret_24h
+                'btc_24h_return': btc_ret_24h,
+                'btc_4h_return': btc_ret_4h
             }
-            print("--- Market Status Update (Strategy V154 Altcoin Decoupling & Large-Cap Squeeze) ---")
+            print("--- Market Status Update (Strategy V155 Altcoin Decoupling & Large-Cap Squeeze) ---")
             print(f"BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -390,14 +393,13 @@ class TradingBot:
                             cache_data.update({'altcoin_24h_return': (close_1h.iloc[-1] - close_1h.iloc[-25]) / close_1h.iloc[-25] * 100})
                         else:
                             cache_data.update({'altcoin_24h_return': 0.0})
-                            
+
                         qav_24h_sum = qav_1h.rolling(24, min_periods=1).sum()
                         cache_data.update({'altcoin_24h_volume': qav_24h_sum.iloc[-1]})
                         if len(qav_24h_sum) >= 24 * 7:
                             cache_data.update({'altcoin_24h_vol_sma7': qav_24h_sum.rolling(24*7, min_periods=1).mean().iloc[-1]})
                         else:
                             cache_data.update({'altcoin_24h_vol_sma7': 0.0})
-                        cache_data.update({'sma20_1h': close_1h.rolling(20, min_periods=1).mean().iloc[-1]})
                         
                     if cache_data:
                         self.ema_cache[p] = cache_data
@@ -570,19 +572,13 @@ class TradingBot:
                             self.last_positions_save = time.time()
 
                     take_profit = self.config.get('TAKE_PROFIT', 0.0)
-                    if hold_seconds > 48 * 3600:
-                        decay = min(1.0, (hold_seconds - 48 * 3600) / (72 * 3600))
-                        take_profit *= (1.0 - decay)
+                    
 
                     exit_reason = None
                     if hold_seconds > 24 * 3600 and profit_pct <= -0.07:
                         exit_reason = 'TailRiskSL'
                     
-                    if not exit_reason and hold_seconds > 72 * 3600:
-                        ema_data = self.ema_cache.get(pair, {})
-                        sma20_1h = ema_data.get('sma20_1h', cp)
-                        if cp < sma20_1h:
-                            exit_reason = 'StaleTrend'
+                    
                             
                     if exit_reason:
                         print(f"⚠️ FORCE EXIT: {pair} Reason: {exit_reason}")
@@ -606,15 +602,19 @@ class TradingBot:
         if not active: return
         total_unrealized_usd = 0.0
         
-        # Calculate current equity based on last_total_equity minus the entry value of active positions, plus current value
-        current_equity = getattr(self, 'last_total_equity', 1000.0)
+        # Calculate current equity exactly: cash + current value of positions
+        current_equity = getattr(self, 'last_free_usdt', getattr(self, 'last_total_equity', 1000.0))
         
         for p in active:
             pos = self.positions[p]
             current_p = pos.get('current_price', pos['entry_price'])
+            if hasattr(self, 'last_free_usdt'):
+                current_equity += pos['qty'] * current_p
             total_unrealized_usd += (current_p - pos['entry_price']) * pos['qty']
             
-        current_equity += total_unrealized_usd
+        if not hasattr(self, 'last_free_usdt'):
+            current_equity += total_unrealized_usd
+            
         # Circuit breaker based on equity drawdown
         if not hasattr(self, 'equity_history'):
             self.equity_history = []
@@ -723,7 +723,7 @@ class TradingBot:
             if alt_24h_ret > (btc_ret + 2.5) and alt_24h_vol > alt_24h_vol_sma7:
                 if hourly_vol > 1.5 * avg_vol:
                     if cp > bb_upper and bb_width > bb_width_prev:
-                        setup = "Decoupled_Squeeze_Breakout"
+                        setup = "Decoupled_Squeeze_Breakout" 
             if setup:
                 volatility = atr / cp
                 mx_v = self.config.get('VOLATILITY_CAP', 0.015)
@@ -778,6 +778,8 @@ class TradingBot:
                     sl_min_pct = self.config.get('SL_MIN_PCT', 0.015)
                     sl_dist = (mult * entry_atr) if entry_atr else (cp * 0.02)
                     sl_dist = max(sl_dist, cp * sl_min_pct)
+                    sl_max_pct = self.config.get('SL_MAX_PCT', 0.05)
+                    sl_dist = min(sl_dist, cp * sl_max_pct)
                     
                     amt = (risk_usd / sl_dist) * cp
                     max_risk_cap = total_eq * (self.config['MAX_RISK_PER_TRADE_PERCENT'] / 100.0) * strength
@@ -853,6 +855,7 @@ class TradingBot:
                 try:
                     bal_r = await self.client.get_asset_balance(asset='USDT')
                     free_balance = float(bal_r['free'])
+                    self.last_free_usdt = free_balance
                     total_val = free_balance
                     for p, pos_val in self.positions.items():
                         if pos_val.get('entries', 0) > 0:
