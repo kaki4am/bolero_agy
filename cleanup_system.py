@@ -101,7 +101,12 @@ WHITELIST = {
     'patch_sl_max.py',
     'fix_indent.py',
     '.zcompdump',
-    'patch_eject.py'
+    'patch_eject.py',
+    'fix_bot_indicators.py',
+    'fix_bt_indicators.py',
+    'fix_bt_indicators2.py',
+    'patch_config.py',
+    'patch_portfolio_backtester.py'
 }
 
 def run_cleanup():

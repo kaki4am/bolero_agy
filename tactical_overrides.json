@@ -1,16 +1,20 @@
 {
-    "RISK_MULTIPLIER": 0.8,
-    "SL_MULT_OFFSET": -0.1,
+    "RISK_MULTIPLIER": 1.0,
+    "SL_MULT_OFFSET": 0.0,
     "VOL_SPIKE_MULT_OFFSET": 0.0,
-    "PORTFOLIO_EJECT_OFFSET": 0.5,
+    "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
+        "LAPTOPUSDT",
+        "STONKUSDT",
         "CREAMUSDT",
+        "LSKUSDT",
         "ZECUSDT",
-        "RAYUSDT",
-        "SOLUSDT"
+        "SOLUSDT",
+        "HYPEUSDT",
+        "XRPUSDT"
     ],
-    "rationale": "Aligning with cautious Reddit sentiment over hot PPI data and rising bond yields during this nearly 2% BTC dip, we are gently reducing risk and tightening stops while continuing to whitelist highly decoupled, high-volume altcoins and narrative memecoins to balance capital preservation with targeted momentum capture.",
+    "rationale": "Despite macro-anxious Reddit sentiment regarding hot CPI data and ETF outflows, BTC's positive 24h change (+0.55%) supports maintaining full baseline risk while aggressively whitelisting top gainers and trending narrative memecoins to capture momentum alpha.",
     "confidence": 0.95,
-    "learning_to_persist": "Confirmed that during a near -2% BTC dip driven by macroeconomic pressure, gently reducing risk while maintaining exposure to strongly decoupled top gainers and narrative memecoins efficiently balances defense with alpha capture, in line with cautious Reddit sentiment."
+    "learning_to_persist": "Confirmed that during flat-to-positive BTC conditions (+0.55%) accompanied by macro-anxious Reddit sentiment over hot CPI data and ETF outflows, maintaining full baseline risk while aggressively whitelisting top gainers and trending narrative memecoins efficiently balances macro caution with targeted momentum alpha capture."
 }

@@ -1,22 +1,21 @@
-### Market Data & Sentiment Analysis
-1. **Prolonged Macro Consolidation**: High Bollinger Band (BB) squeeze counts in major caps (BTC: 547, ETH: 476) perfectly align with the observed "wait-and-see" retail sentiment and flat BTC conditions.
-2. **High-Beta Alpha Exists**: Altcoins like NEAR and LINK show massive 30-day trends (44% and 31%) and high daily ranges, confirming that capital is aggressively rotating into decoupled assets despite BTC's chop. 
-3. **Avoid Over-Restriction**: Previous failures (time/day filters, tight trailing stops, rigid ATRs) prove the strategy needs room to breathe to capture massive decoupled moves without being prematurely stopped out by routine volatility.
+### Market Data Analysis
+* **Volatility & Range:** Altcoins like NEAR (40.6% daily range) and LINK (27.7%) show explosive momentum and high volatility compared to BTC (13.1%). 
+* **Squeeze Dynamics:** Majors (BTC, ETH, SOL) exhibit high Bollinger Band squeeze counts, indicating prolonged consolidations that align with the Reddit sentiment of macro "wait-and-see" periods.
+* **Volume Profiling:** Capital rotation into low-volume/high-range assets during flat BTC conditions dictates that volume surges are the primary indicator of decoupling.
+* **Previous Learnings Constraint:** Strict stop-losses (like the -3% cap or ATR-based dynamic stops) and time-based filters cause premature exits and overfitting. Defense must be achieved through asset selection rather than tight trade restrictions.
 
-### Proposed Signals/Filters
+### Proposed Logic (Signals & Filters)
 
-**1. Decoupled Relative Strength (DRS) Volume Filter (Entry Filter)**
-*   **Concept**: Mechanically identify the "decoupled, high-volume altcoin breakouts" highlighted in the AI manager logs, specifically during BTC retracements (-1% to -3%).
-*   **Indicators**: 4-hour Relative Return vs BTC, and 1-hour Volume Moving Average (VMA).
-*   **Parameters**:
-    *   `Altcoin_4h_Return > (BTC_4h_Return + 2.5%)` 
-    *   `Current_1h_Volume > 2.5 * SMA(1h_Volume, 24)`
-*   **Logic**: Only authorize aggressive altcoin long entries during BTC weakness if the asset proves it is completely ignoring macro gravity via a strict volume anomaly and significant price outperformance.
+**1. Relative Volume (RVOL) Decoupling Filter (Entry)**
+* **Logic:** Ensure entries into altcoins only occur when genuine capital rotation is confirmed by a volume surge, specifically during BTC consolidation or mild dips (-3% to +1%).
+* **Indicators & Parameters:**
+  * **BTC Condition:** BTC 4h Rate of Change (ROC) is between `-3.0%` and `+1.0%`.
+  * **Altcoin Momentum:** Altcoin 4h ROC `> 3.0%`.
+  * **Volume Confirmation:** Altcoin RVOL `> 2.0` (current volume is > 200% of its 24-period or 50-period Simple Moving Average of volume).
 
-**2. Volatility Expansion Squeeze Breakout (Entry Signal)**
-*   **Concept**: Capitalize on the high BB squeeze counts by catching the exact moment retail capital rotates into an asset, triggering a momentum explosion.
-*   **Indicators**: Bollinger Bandwidth (BBB) (Length 20, Multiplier 2) + RSI (14).
-*   **Parameters**:
-    *   `BB_Bandwidth > 1.5 * Min(BB_Bandwidth, 24)` (Bandwidth expands by 50% from its 24-hour low).
-    *   `RSI(14) > 65` (Confirming strong upward momentum).
-*   **Logic**: Triggers an entry exactly when a prolonged consolidation (squeeze) breaks upward with strong retail momentum, capturing the narrative-driven runs before they hit peak saturation.
+**2. Profit-Activated Trailing Stop (Exit)**
+* **Logic:** Hard stops at -3% and continuous ATR trailing stops cause premature liquidations in highly volatile assets like NEAR and LINK. To survive routine chop but capture massive upside, keep the initial stop wide and only activate a trailing stop once a strong profit cushion is established.
+* **Indicators & Parameters:**
+  * **Initial Stop-Loss:** `-5.0%` to `-7.0%` (avoids the rejected -3% cap).
+  * **Activation Threshold:** Trailing stop logic remains inactive until unrealized profit reaches `+8.0%` to `+10.0%`.
+  * **Trailing Distance:** Once activated, trail the price by `-3.0%` to `-4.0%` from the peak to lock in momentum gains without choking the trade early.

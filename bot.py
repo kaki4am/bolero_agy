@@ -48,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V155 Altcoin Decoupling & Large-Cap Squeeze
+        # Strategy V156 - Volatile Momentum & Decoupling Squeeze
         self.config = {
             'MIN_VOLATILITY': 0.001,
             'BASE_RISK_PERCENT': 4.611576631674215,
@@ -178,6 +178,7 @@ class TradingBot:
                        'FETUSDT', 'INJUSDT', 'NEARUSDT', 'DOTUSDT', 'FILUSDT', 'LDOUSDT', 'XECUSDT', 'SHIBUSDT', 'DODOUSDT',
                        'WLDUSDT', 'ADAUSDT', 'LINKUSDT', 'XRPUSDT', 'LTCUSDT',
                        'HFTUSDT', 'PEOPLEUSDT', 'ONGUSDT', 'SYNUSDT', 'COTIUSDT', 'CRVUSDT',
+                       'ENSUSDT', 'DEXEUSDT', 'HEIUSDT',
                        'XAUTUSDT', 'QQQBUSDT', 'MITOUSDT', 'MARSCOINUSDT']
         candidates = []
         for p in usdt_pairs:
@@ -358,15 +359,13 @@ class TradingBot:
             closes_15m = pd.Series([float(k[4]) for k in klines_15m])
             ema200_15m = ta.ema(closes_15m, length=200).iloc[-1]
             btc_cp_15m = closes_15m.iloc[-1]
-            btc_ret_24h = (btc_cp_15m - closes_15m.iloc[-97]) / closes_15m.iloc[-97] * 100 if len(closes_15m) > 96 else 0.0
             btc_ret_4h = (btc_cp_15m - closes_15m.iloc[-17]) / closes_15m.iloc[-17] * 100 if len(closes_15m) > 16 else 0.0
 
             self.market_trend = {
                 'btc_uptrend_15m': btc_cp_15m > ema200_15m,
-                'btc_24h_return': btc_ret_24h,
                 'btc_4h_return': btc_ret_4h
             }
-            print("--- Market Status Update (Strategy V155 Altcoin Decoupling & Large-Cap Squeeze) ---")
+            print("--- Market Status Update (Strategy V156 - Volatile Momentum & Decoupling Squeeze) ---")
             print(f"BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -393,6 +392,11 @@ class TradingBot:
                             cache_data.update({'altcoin_24h_return': (close_1h.iloc[-1] - close_1h.iloc[-25]) / close_1h.iloc[-25] * 100})
                         else:
                             cache_data.update({'altcoin_24h_return': 0.0})
+
+                        if len(close_1h) >= 5:
+                            cache_data.update({'altcoin_4h_return': (close_1h.iloc[-1] - close_1h.iloc[-5]) / close_1h.iloc[-5] * 100})
+                        else:
+                            cache_data.update({'altcoin_4h_return': 0.0})
 
                         qav_24h_sum = qav_1h.rolling(24, min_periods=1).sum()
                         cache_data.update({'altcoin_24h_volume': qav_24h_sum.iloc[-1]})
@@ -549,22 +553,14 @@ class TradingBot:
                     profit_pct = (cp - pos['entry_price']) / pos['entry_price']
                     
                     # V106 ProfitGuard (Parameterized Trailing)
-                    # Minimum hold period: don't tighten stops in first 15 minutes
-                    trail_trigger = self.config.get('TRAILING_TRIGGER', 0.040)
-                    trail_dist = self.config.get('TRAILING_DIST', 0.020)
-                    be_trigger = self.config.get('BE_TRIGGER', 0.020)
-                    be_lock = self.config.get('BE_LOCK', 0.002)
+                    trail_trigger = self.config.get('TRAILING_TRIGGER', 0.08)
+                    trail_dist = self.config.get('TRAILING_DIST', 0.035)
                     
                     hold_seconds = time.time() - pos.get('time', time.time())
-                    min_hold_passed = hold_seconds > 360 * 60  # 6 hours
                     
-                    if min_hold_passed:
-                        if profit_pct > trail_trigger:
-                            sl = max(sl, cp * (1.0 - trail_dist))
-                            self.positions[pair]['sl'] = sl
-                        elif profit_pct > be_trigger:
-                            sl = max(sl, pos['entry_price'] * (1.0 + be_lock))
-                            self.positions[pair]['sl'] = sl
+                    if profit_pct > trail_trigger:
+                        sl = max(sl, cp * (1.0 - trail_dist))
+                        self.positions[pair]['sl'] = sl
                     
                     if sl != old_sl or self.positions[pair].get('max_p', 0) != old_max_p:
                         if time.time() - self.last_positions_save > 30:
@@ -575,6 +571,13 @@ class TradingBot:
                     
 
                     exit_reason = None
+                    if hold_seconds > 48 * 3600:
+                        alt_24h_ret_c = self.ema_cache.get(pair, {}).get('altcoin_24h_return', 0.0)
+                        alt_24h_vol_c = self.ema_cache.get(pair, {}).get('altcoin_24h_volume', 0.0)
+                        alt_24h_vol_sma7_c = self.ema_cache.get(pair, {}).get('altcoin_24h_vol_sma7', 0.0)
+                        if alt_24h_ret_c < 1.0 or alt_24h_vol_c < alt_24h_vol_sma7_c * 0.8:
+                            exit_reason = 'TimeDecay'
+                            
                     if hold_seconds > 24 * 3600 and profit_pct <= -0.07:
                         exit_reason = 'TailRiskSL'
                     
@@ -687,9 +690,10 @@ class TradingBot:
             'atr': float(atr),
             'bb_upper': float(bb_upper),
             'btc_uptrend': bool(btc_uptrend_15m),
-            'btc_ret': float(self.market_trend.get('btc_24h_return', 0.0)),
+            'btc_4h_ret': float(self.market_trend.get('btc_4h_return', 0.0)),
             'alt_24h_ret': float(ema_data.get('altcoin_24h_return', 0.0)),
             'alt_24h_vol': float(ema_data.get('altcoin_24h_volume', 0.0)),
+            'alt_4h_ret': float(ema_data.get('altcoin_4h_return', 0.0)),
             'alt_24h_vol_sma7': float(ema_data.get('altcoin_24h_vol_sma7', 0.0)),
             'hourly_vol': float(ema_data.get('hourly_volume', 0.0)),
             'avg_vol': float(ema_data.get('vol_1h_avg_24h', 0.0)),
@@ -713,15 +717,13 @@ class TradingBot:
             
             setup = None
 
-            btc_ret = self.market_trend.get('btc_24h_return', 0.0)
-            alt_24h_ret = ema_data.get('altcoin_24h_return', 0.0)
-            alt_24h_vol = ema_data.get('altcoin_24h_volume', 0.0)
-            alt_24h_vol_sma7 = ema_data.get('altcoin_24h_vol_sma7', 0.0)
             hourly_vol = ema_data.get('hourly_volume', 0.0)
             avg_vol = ema_data.get('vol_1h_avg_24h', 0.0)
             
-            if alt_24h_ret > (btc_ret + 2.5) and alt_24h_vol > alt_24h_vol_sma7:
-                if hourly_vol > 1.5 * avg_vol:
+            btc_4h_ret = self.market_trend.get('btc_4h_return', 0.0)
+            alt_4h_ret = ema_data.get('altcoin_4h_return', 0.0)
+            if -3.0 <= btc_4h_ret <= 1.0 and alt_4h_ret > 3.0:
+                if hourly_vol > 2.0 * avg_vol:
                     if cp > bb_upper and bb_width > bb_width_prev:
                         setup = "Decoupled_Squeeze_Breakout" 
             if setup:
@@ -737,8 +739,7 @@ class TradingBot:
                 
                 
                     
-                if await self.execute_trade(pair, 'BUY', strength=size_strength, entry_atr=atr, setup_name=setup):
-                    pass
+                await self.execute_trade(pair, 'BUY', strength=size_strength, entry_atr=atr, setup_name=setup)
         else:
             if cp > pos.get('max_p', 0):
                 self.positions[pair]['max_p'] = cp
@@ -770,7 +771,11 @@ class TradingBot:
                 if side == 'BUY':
                     risk_pct = (self.config['BASE_RISK_PERCENT'] / 100.0) * strength
                     if hasattr(self, 'market_trend') and not self.market_trend.get('btc_uptrend_15m', True):
-                        risk_pct *= 0.5
+                        btc_4h_ret_risk = self.market_trend.get('btc_4h_return', 0.0)
+                        if btc_4h_ret_risk < -1.5:
+                            risk_pct *= 0.75
+                        elif btc_4h_ret_risk < -1.0:
+                            risk_pct *= 0.9
                     risk_usd = total_eq * risk_pct
                     cp = self.data_1m[pair]['close'].iloc[-1]
                     
