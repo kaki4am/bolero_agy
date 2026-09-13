@@ -13,8 +13,8 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V156 Indicators...")
-        blacklist = ['PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'VETUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT', 'ENSUSDT', 'PEOPLEUSDT', 'HFTUSDT', 'ONGUSDT', 'DEXEUSDT', 'SYNUSDT', 'HEIUSDT', 'COTIUSDT']
+        if status_callback: status_callback("Calculating Strategy V157 Indicators...")
+        blacklist = ['PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'VETUSDT', 'LUNCUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT', 'ENSUSDT', 'PEOPLEUSDT', 'HFTUSDT', 'ONGUSDT', 'DEXEUSDT', 'SYNUSDT', 'HEIUSDT', 'COTIUSDT']
         self.pair_data = {k: v for k, v in self.pair_data.items() if k not in blacklist}
         total = len(self.pair_data)
         
@@ -24,10 +24,11 @@ class PortfolioBacktester:
             btc_15m_shifted['timestamp'] = btc_15m_shifted['timestamp'] + pd.Timedelta(minutes=15)
             btc_15m_indexed = btc_15m_shifted.set_index('timestamp')
             btc_15m_indexed['btc_4h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(16)) / btc_15m_indexed['close'].shift(16) * 100
+            btc_15m_indexed['btc_24h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(96)) / btc_15m_indexed['close'].shift(96) * 100
             
             self.btc_trend_aligned = pd.DataFrame({
-                'uptrend_15m': btc_15m_indexed['close'] > btc_15m_indexed['ema200'],
-                'btc_4h_return': btc_15m_indexed['btc_4h_return']
+                'btc_4h_return': btc_15m_indexed['btc_4h_return'],
+                'btc_24h_return': btc_15m_indexed['btc_24h_return']
             })
         else:
             self.btc_trend_aligned = None
@@ -82,7 +83,7 @@ class PortfolioBacktester:
             if self.btc_trend_aligned is not None:
                 indicators['btc_safe'] = self.btc_trend_aligned.reindex(df_1m_idx.index).ffill()
             else:
-                indicators['btc_safe'] = pd.DataFrame({'uptrend_15m': [True]*len(df_1m)}, index=df_1m_idx.index)
+                indicators['btc_safe'] = pd.DataFrame(index=df_1m_idx.index)
 
             indicators['atr'] = df_1h_idx['atr'].reindex(df_1m_idx.index).ffill().bfill().fillna(df_1m['close'] * 0.01)
             
@@ -127,12 +128,12 @@ class PortfolioBacktester:
                 'high': df['high'].values,
                 'low': df['low'].values,
                 'atr': ind['atr'].values,
-                'btc_uptrend_15m': ind['btc_safe']['uptrend_15m'].values,
                 'bb_upper': ind['bb_upper'].values,
                 'bb_width': ind['bb_width'].values,
                 'hourly_volume': ind['hourly_volume'].values,
                 'vol_1h_avg_24h': ind['vol_1h_avg_24h'].values,
                 'btc_4h_return': ind['btc_safe']['btc_4h_return'].values if 'btc_4h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values,
+                'btc_24h_return': ind['btc_safe']['btc_24h_return'].values if 'btc_24h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values,
                 'altcoin_24h_return': ind['altcoin_24h_return'].values,
                 'altcoin_4h_return': ind['altcoin_4h_return'].values,
                 'altcoin_24h_volume': ind['altcoin_24h_volume'].values,
@@ -219,7 +220,6 @@ class PortfolioBacktester:
                     
                     hold_time_m = idx - pos['time']
                     high_profit_pct = (high_price - pos['entry_price']) / pos['entry_price']
-                    current_profit_pct = (price - pos['entry_price']) / pos['entry_price']
                     old_sl = pos['sl']
                     
                     if high_profit_pct > params.get('TRAILING_TRIGGER', 0.08):
@@ -239,8 +239,8 @@ class PortfolioBacktester:
                             exit_reason = "TimeDecay"
                             exit_price = price * (1.0 - slippage_pct)
                     
-                    if hold_time_m > 24 * 60 and current_profit_pct <= -0.07:
-                        exit_reason = "TailRiskSL"
+                    if hold_time_m > 24 * 60:
+                        exit_reason = "TimeLimit"
                         exit_price = price * (1.0 - slippage_pct)
                         
                     
@@ -282,14 +282,14 @@ class PortfolioBacktester:
                     
                     btc_4h_ret = s_data['btc_4h_return'][idx]
                     alt_4h_ret = s_data['altcoin_4h_return'][idx]
-                    if -3.0 <= btc_4h_ret <= 1.0 and alt_4h_ret > 3.0:
+                    if -3.0 <= btc_4h_ret <= 1.0 and alt_4h_ret > (btc_4h_ret + 3.0):
                         hourly_vol = s_data['hourly_volume'][idx]
                         avg_vol = s_data['vol_1h_avg_24h'][idx]
-                        if hourly_vol > 2.0 * avg_vol:
+                        if hourly_vol > 1.5 * avg_vol:
                             bb_width_prev = s_data['bb_width_prev'][idx]
                             bbw = s_data['bb_width'][idx]
                             if price > bb_upper and bbw > bb_width_prev:
-                                setup = "Decoupled_Squeeze_Breakout" 
+                                setup = "Decoupled_Squeeze_Breakout"  
 
                     if setup:
                         volatility = atr / price
@@ -306,12 +306,11 @@ class PortfolioBacktester:
                             
                             
                             risk_pct = (params.get('BASE_RISK_PERCENT', 2.0) / 100.0) * size_strength
-                            if not s_data['btc_uptrend_15m'][idx]:
-                                btc_4h_ret_risk = s_data['btc_4h_return'][idx]
-                                if btc_4h_ret_risk < -1.5:
-                                    risk_pct = risk_pct * 0.75
-                                elif btc_4h_ret_risk < -1.0:
-                                    risk_pct = risk_pct * 0.9
+                            btc_24h_ret_risk = s_data['btc_24h_return'][idx]
+                            if btc_24h_ret_risk <= -3.0:
+                                risk_pct = risk_pct * 0.5
+                            elif btc_24h_ret_risk < -1.0:
+                                risk_pct = risk_pct * 0.8
                             risk_usd = current_equity * risk_pct
 
                             mult = params.get('ATR_SL_MULT', 2.5)

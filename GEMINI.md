@@ -1,4 +1,4 @@
-# Strategy V156 - Volatile Momentum & Decoupling Squeeze
+# Strategy V157 - Volatile Momentum & Decoupling Squeeze
 
 ## Overview
 Binance spot trading bot managed by an autonomous AI agent. The AI has full authority to research, discover, and deploy any statistically profitable entry setups (e.g., trend following, momentum breakouts, capitulation bounces) to maximize PnL and outperform a Bitcoin Buy-and-Hold baseline.
@@ -11,10 +11,11 @@ Binance spot trading bot managed by an autonomous AI agent. The AI has full auth
 
 ## Current Active Strategy
 - *Primary Setup (Decoupled Squeeze Breakout):* Targets altcoins that exhibit relative strength against BTC and volume anomalies during periods of BTC consolidation.
-  - **Entry Filter**: BTC 4h ROC is between -3.0% and +1.0%, while Altcoin 4h ROC > 3.0%.
-  - **Entry Signal**: Altcoin RVOL > 2.0x AND price closes outside the upper Bollinger Band while Bands are expanding.
-  - **Risk Scaling**: Risk multiplier scales down to 0.75x if BTC 4h drop is >1.5%, and 0.9x if >1.0%. 1.0x maintained for sub-1% dips.
-- *Filters:* Expanded blacklist includes low win-rate pairs like ENS, VET, PEOPLE, HFT, ONG, DEXE, SYN, HEI, COTI in addition to previous structural bleeders. Time-of-Day and Day-of-Week filters rejected to prevent overfitting.
+  - **Entry Filter**: BTC 4h ROC is between -3.0% and +1.0%, while Altcoin 4h ROC > (BTC 4h ROC + 3.0%).
+  - **Entry Signal**: Altcoin RVOL > 1.5x AND price closes outside the upper Bollinger Band while Bands are expanding.
+  - **Risk Scaling**: Risk multiplier scales based on BTC 24h return: 1.0x if >= -1.0%, 0.8x if -3.0% to -1.0%, and 0.5x if <= -3.0%.
+- *Filters:* Expanded blacklist includes low win-rate pairs like LUNCUSDT in addition to previous structural bleeders. Time-of-Day and Day-of-Week filters rejected to prevent overfitting.
+- *Hold Limits:* Trades have a hard exit at 24 hours to prevent capital bleed.
 
 ## Exit Logic
 - **Profit-Activated Trailing Stop**: Initial stops are kept wide (-6.0% to -7.0%). Trailing stops (-3.5%) only activate once a profit cushion of +6.0% to +8.0% is established.

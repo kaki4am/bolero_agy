@@ -106,7 +106,9 @@ WHITELIST = {
     'fix_bt_indicators.py',
     'fix_bt_indicators2.py',
     'patch_config.py',
-    'patch_portfolio_backtester.py'
+    'patch_portfolio_backtester.py',
+    'patch_bot_config.py',
+    'duck.html'
 }
 
 def run_cleanup():

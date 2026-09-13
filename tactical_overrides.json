@@ -5,16 +5,13 @@
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
-        "LAPTOPUSDT",
-        "STONKUSDT",
-        "CREAMUSDT",
         "LSKUSDT",
+        "CREAMUSDT",
         "ZECUSDT",
         "SOLUSDT",
-        "HYPEUSDT",
-        "XRPUSDT"
+        "PEPEUSDT"
     ],
-    "rationale": "Despite macro-anxious Reddit sentiment regarding hot CPI data and ETF outflows, BTC's positive 24h change (+0.55%) supports maintaining full baseline risk while aggressively whitelisting top gainers and trending narrative memecoins to capture momentum alpha.",
+    "rationale": "Despite hot CPI data and rising bond yields, BTC remains stable and slightly positive (+0.02%), aligning with opportunistic Reddit sentiment that favors maintaining baseline risk to aggressively whitelist highly decoupled top gainers and high-volume altcoins.",
     "confidence": 0.95,
-    "learning_to_persist": "Confirmed that during flat-to-positive BTC conditions (+0.55%) accompanied by macro-anxious Reddit sentiment over hot CPI data and ETF outflows, maintaining full baseline risk while aggressively whitelisting top gainers and trending narrative memecoins efficiently balances macro caution with targeted momentum alpha capture."
+    "learning_to_persist": "Confirmed that during flat-to-positive BTC conditions (+0.02%) near $80K resistance despite hot CPI and high bond yields, maintaining full baseline risk while aggressively whitelisting top gainers and narrative memecoins efficiently captures momentum alpha alongside opportunistic Reddit sentiment."
 }

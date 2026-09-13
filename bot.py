@@ -48,29 +48,8 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V156 - Volatile Momentum & Decoupling Squeeze
-        self.config = {
-            'MIN_VOLATILITY': 0.001,
-            'BASE_RISK_PERCENT': 4.611576631674215,
-            'MAX_RISK_PER_TRADE_PERCENT': 23.138107035164726,
-            'COOLDOWN_PERIOD': 600,
-            'MAX_PAIRS': 40,
-            'PORTFOLIO_EJECT': -8.751258110934428,
-            'PORTFOLIO_HARVEST': 9.393994286109903,
-            'VOL_SPIKE_MULTIPLIER': 1.5,
-            'SL_MIN_PCT': 0.021986122119325817,
-            'SL_MAX_PCT': 0.03535344813215079,
-            'BE_TRIGGER': 0.012051454522992245,
-            'BE_LOCK': 0.004301968436203864,
-            'TRAILING_TRIGGER': 0.04467886111874062,
-            'TRAILING_DIST': 0.0093455106121612,
-            'VOLATILITY_CAP': 0.01954279481897226,
-            'ATR_SL_MULT': 2.9973558371275932,
-            'SCALE_1_POS': 0.9910534826442084,
-            'SCALE_2_POS': 0.405864442890098,
-            'SCALE_3_POS': 0.13940060952542122,
-            'TAKE_PROFIT': 0.0926288409374077
-        }
+        # Strategy V157 - Volatile Momentum & Decoupling Squeeze
+        self.config = {}
         self.base_config = self.config.copy()
         self.load_config()
         self.load_restricted_pairs()
@@ -357,16 +336,16 @@ class TradingBot:
             klines_15m = await self.client.get_historical_klines("BTCUSDT", AsyncClient.KLINE_INTERVAL_15MINUTE, "10 days ago UTC")
             if len(klines_15m) > 1: klines_15m = klines_15m[:-1]
             closes_15m = pd.Series([float(k[4]) for k in klines_15m])
-            ema200_15m = ta.ema(closes_15m, length=200).iloc[-1]
             btc_cp_15m = closes_15m.iloc[-1]
             btc_ret_4h = (btc_cp_15m - closes_15m.iloc[-17]) / closes_15m.iloc[-17] * 100 if len(closes_15m) > 16 else 0.0
+            btc_ret_24h = (btc_cp_15m - closes_15m.iloc[-97]) / closes_15m.iloc[-97] * 100 if len(closes_15m) > 96 else 0.0
 
             self.market_trend = {
-                'btc_uptrend_15m': btc_cp_15m > ema200_15m,
-                'btc_4h_return': btc_ret_4h
+                'btc_4h_return': btc_ret_4h,
+                'btc_24h_return': btc_ret_24h
             }
-            print("--- Market Status Update (Strategy V156 - Volatile Momentum & Decoupling Squeeze) ---")
-            print(f"BTC 15m Trend: {'UP' if btc_cp_15m > ema200_15m else 'DOWN'}")
+            print("--- Market Status Update (Strategy V157 - Volatile Momentum & Decoupling Squeeze) ---")
+            print(f"BTC 4h Return: {btc_ret_4h:+.2f}% | 24h: {btc_ret_24h:+.2f}%")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
             async def fetch_pair_ema(p):
@@ -578,8 +557,8 @@ class TradingBot:
                         if alt_24h_ret_c < 1.0 or alt_24h_vol_c < alt_24h_vol_sma7_c * 0.8:
                             exit_reason = 'TimeDecay'
                             
-                    if hold_seconds > 24 * 3600 and profit_pct <= -0.07:
-                        exit_reason = 'TailRiskSL'
+                    if hold_seconds > 24 * 3600:
+                        exit_reason = 'TimeLimit'
                     
                     
                             
@@ -682,14 +661,11 @@ class TradingBot:
         if ema_data:
             atr = ema_data.get('atr_1h', cp * 0.01)
             
-        btc_uptrend_15m = self.market_trend.get('btc_uptrend_15m', True)
-
         if not hasattr(self, 'current_indicators'):
             self.current_indicators = {}
         self.current_indicators[pair] = {
             'atr': float(atr),
             'bb_upper': float(bb_upper),
-            'btc_uptrend': bool(btc_uptrend_15m),
             'btc_4h_ret': float(self.market_trend.get('btc_4h_return', 0.0)),
             'alt_24h_ret': float(ema_data.get('altcoin_24h_return', 0.0)),
             'alt_24h_vol': float(ema_data.get('altcoin_24h_volume', 0.0)),
@@ -722,10 +698,10 @@ class TradingBot:
             
             btc_4h_ret = self.market_trend.get('btc_4h_return', 0.0)
             alt_4h_ret = ema_data.get('altcoin_4h_return', 0.0)
-            if -3.0 <= btc_4h_ret <= 1.0 and alt_4h_ret > 3.0:
-                if hourly_vol > 2.0 * avg_vol:
+            if -3.0 <= btc_4h_ret <= 1.0 and alt_4h_ret > (btc_4h_ret + 3.0):
+                if hourly_vol > 1.5 * avg_vol:
                     if cp > bb_upper and bb_width > bb_width_prev:
-                        setup = "Decoupled_Squeeze_Breakout" 
+                        setup = "Decoupled_Squeeze_Breakout"  
             if setup:
                 volatility = atr / cp
                 mx_v = self.config.get('VOLATILITY_CAP', 0.015)
@@ -770,12 +746,12 @@ class TradingBot:
                     total_eq = getattr(self, 'last_total_equity', 1000.0)
                 if side == 'BUY':
                     risk_pct = (self.config['BASE_RISK_PERCENT'] / 100.0) * strength
-                    if hasattr(self, 'market_trend') and not self.market_trend.get('btc_uptrend_15m', True):
-                        btc_4h_ret_risk = self.market_trend.get('btc_4h_return', 0.0)
-                        if btc_4h_ret_risk < -1.5:
-                            risk_pct *= 0.75
-                        elif btc_4h_ret_risk < -1.0:
-                            risk_pct *= 0.9
+                    if hasattr(self, 'market_trend'):
+                        btc_24h_ret_risk = self.market_trend.get('btc_24h_return', 0.0)
+                        if btc_24h_ret_risk <= -3.0:
+                            risk_pct *= 0.5
+                        elif btc_24h_ret_risk < -1.0:
+                            risk_pct *= 0.8
                     risk_usd = total_eq * risk_pct
                     cp = self.data_1m[pair]['close'].iloc[-1]
                     

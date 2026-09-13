@@ -1,13 +1,17 @@
-**SYSTEM & RISK ANALYSIS REPORT**
+Based on the system health, logs, and recent performance, here are the proposed structural and risk management changes:
 
-**1. Structural & System Health Guards**
-*   **Symbol Validation Filter:** The AI Manager is force-whitelisting non-existent or unsupported pairs (`STONKUSDT`, `LAPTOPUSDT`), resulting in API -1121 errors. 
-    *   *Action:* Implement a structural guard to cross-reference AI-generated whitelist candidates against the exchange's active symbol endpoint before adding them to the tracking queue. This will prevent tracker congestion and API error rate limits.
+**1. Tactical Risk Reduction (Position Sizing)**
+* **Observation:** The BTC 15m trend is currently DOWN, and the strategy has suffered 5 significant recent losses (-3.6% to -4.7%) resulting in a negative 24h PnL (-$23.06).
+* **Proposal:** Temporarily reduce the `Risk Mult` from `1.0` to `0.5 - 0.7`. Maintain wider stop-losses (avoiding the previously rejected -3.0% hard cap) but reduce position sizing to defend equity during this short-term downward volatility.
 
-**2. Risk Management & Portfolio Guards**
-*   **Profit-Activated Trailing Stop (Take Profit Guard):** Since a strict -3.0% stop-loss was previously rejected for causing premature liquidations, and current losses are hovering around the -3.4% to -3.7% range, we should avoid tightening the initial stop. 
-    *   *Action:* Implement a trailing stop that *only* activates after a trade reaches a +4% profit threshold. This gives high-volatility decoupled altcoins room to breathe at entry while locking in gains on successful breakouts (like the 12% MINA trade) before they retrace.
-*   **Time-Decay Momentum Check (Capital Efficiency):** A recent ETH trade tied up capital for 97 hours. Since hard 72h time-limit exits were rejected in the past, use a soft guard.
-    *   *Action:* Introduce a time-decaying momentum requirement. If a trade is held for > 48 hours, it must pass a stricter relative-volume/momentum check to remain open; otherwise, gracefully close it to rotate capital into fresh top-gainers.
-*   **Dynamic Risk Alignment:** The BTC 15m trend is currently registered as `DOWN`, yet the tactical override is applying a `Risk Mult=1.0`. 
-    *   *Action:* Ensure the risk multiplier logic distinguishes between sub-1% dips (where 1.0 is optimal for alpha capture, per learnings) and >1.5% macro dips (where risk should automatically scale down to 0.7 - 0.8). Verify the magnitude of the current DOWN trend to ensure baseline risk isn't overexposed.
+**2. Portfolio Guards (Consecutive Loss Cooldown)**
+* **Observation:** Recent losses occurred extremely rapidly (e.g., MTLUSDT stopped out in 3m 30s, PUNDIXUSDT in 11m 53s, ARPAUSDT in 14m 2s). 
+* **Proposal:** Implement a system-level cooldown (e.g., 1-2 hours) on new entries after 3 consecutive stop-outs to prevent rapid "chop" and capital bleed during sudden market structural shifts.
+
+**3. Structural Entry Filters (Timeframe Alignment)**
+* **Observation:** The only highly successful recent trade (PROMUSDT, +3.85%) had an 83-hour hold time, while rapid momentum entries are failing quickly.
+* **Proposal:** When the BTC 15m trend is DOWN, require higher-timeframe confirmation (e.g., 1H or 4H trend alignment) for altcoin entries to prevent buying into fake-out momentum spikes.
+
+**4. Take Profit / Trailing Adjustments**
+* **Observation:** The system successfully logged a Take Profit on MTLUSDT recently, indicating TP mechanisms are working when targets are reached.
+* **Proposal:** Keep TP and trailing stop logic as-is, focusing risk management entirely on the entry criteria and initial position sizing reductions.

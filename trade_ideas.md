@@ -1,24 +1,19 @@
-Based on the provided trade data and previous learnings, here are the statistically significant filters proposed to improve win rate:
+Based on the statistical data and strict adherence to the previous system learnings, here are the proposed filters:
 
-**1. Pair Exclusions (High Priority)**
-Exclude assets that demonstrate both exceptionally low win rates (< 40%) and significant total PnL drag:
-*   **PEPEUSDT**: 22.7% win rate | -42.69 USDT Total PnL
-*   **PENDLEUSDT**: 33.9% win rate | -40.35 USDT Total PnL
-*   **DOGEUSDT**: 37.8% win rate | -56.24 USDT Total PnL
-*   **Structurally Unprofitable/Low Win-Rate Pairs (<30%)**: ENSUSDT (0%), VETUSDT (16.7%), PEOPLEUSDT (16.7%), HFTUSDT (16.7%), ONGUSDT (20%), DEXEUSDT (25%), SYNUSDT (25%), HEIUSDT (27.3%), COTIUSDT (28.6%).
+**1. Time-of-Day & Day-of-Week Filters: NONE**
+*   **Data shows:** Hours 13, 17, 20, 22 and Days 1, 3 have the lowest win rates.
+*   **Recommendation:** **DO NOT APPLY.** Previous strategy learnings explicitly reject TOD/DOW filters, proving they cause severe out-of-sample overfitting, fail to adapt to shifting regimes, and inadvertently block highly profitable breakouts. 
 
-**2. Time-of-Day Filters (Use with Caution)**
-*Previous learnings indicate broad time filters cause overfitting, but the following specific hours severely underperform:*
-*   **Hour 13**: 35.3% win rate | -0.465 Avg PnL
-*   **Hour 17**: 37.8% win rate | -0.547 Avg PnL
-*   **Hour 20**: 33.7% win rate | -0.340 Avg PnL
-*   **Hour 22**: 26.9% win rate | -0.750 Avg PnL
-*Recommendation*: Consider a filter excluding new entries exclusively during hours 13, 17, 20, and 22. 
+**2. Hold Time Limits: 24-HOUR HARD EXIT**
+*   **Data shows:** Trades held in the `24h+` bucket have a high win rate (57.8%) but a **negative average PnL (-0.146)**. 
+*   **Recommendation:** Implement a 24-hour maximum hold time limit. The data indicates that trades failing to resolve within 24 hours turn into heavy "bleeders" where outsized losses erase smaller, long-duration wins. 
 
-**3. Hold Time Adjustments**
-*   **0-2h Hold Time**: 43.7% win rate | -0.231 Avg PnL
-*   **12-24h Hold Time**: 59.4% win rate | +0.509 Avg PnL
-*Recommendation*: Trades exiting within 0-2 hours are the least profitable. Given previous learnings rejecting hard stop-loss caps, avoid overly aggressive early exit criteria. Allow trades breathing room to develop into the more profitable 6h+ hold buckets.
-
-**4. Day-of-Week Filters**
-*Recommendation*: **Reject all Day-of-Week filters**. Days 0, 1, 2, 3, 5, and 6 perform similarly (44-47% win rate), and Day 4 is an outlier (55.2%). Filtering these risks severe overfitting, aligning with previous forward-testing observations.
+**3. Pair Exclusions (Blacklist): PEPE, DOGE, PENDLE, LUNC, VET**
+*   **Data shows:** These pairs have statistically significant sample sizes with atrocious win rates and severe negative expectancy.
+*   **Recommendation:** Blacklist the following pairs to immediately boost aggregate win rate and preserve capital:
+    *   **PEPEUSDT:** 22.7% Win Rate (88 trades, -42.69 PnL)
+    *   **DOGEUSDT:** 37.8% Win Rate (98 trades, -56.24 PnL)
+    *   **PENDLEUSDT:** 33.9% Win Rate (59 trades, -40.35 PnL)
+    *   **LUNCUSDT:** 40.7% Win Rate (59 trades, -24.36 PnL)
+    *   **VETUSDT:** 16.7% Win Rate (Worst 30-day performer, -13.88 PnL)
+    *   *(Note: SOLUSDT has the worst all-time PnL, but is intentionally omitted from this blacklist because recent AI Manager logs explicitly target SOL as a key decoupled momentum asset for the current market regime).*
