@@ -83,7 +83,7 @@ async def get_top_pairs(limit=50):
 
 def update_bot_config(best_params):
     save_config(best_params)
-    os.system("systemctl restart trading-bot.service")
+    print("Updated config.json. Bot will reload dynamically.")
 
 async def fetch_historical_segment(client, start_str, end_str, symbols):
     import os
@@ -253,7 +253,7 @@ async def optimize():
             'ATR_SL_MULT': trial.suggest_float('ATR_SL_MULT', 1.0, 8.0),
             'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
             'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 20.0),
-            'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.005, 0.050),
+            'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.060, 0.070),
             'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.200),
             'VOLATILITY_CAP': trial.suggest_float('VOLATILITY_CAP', 0.010, 0.050),
             'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),

@@ -5,13 +5,17 @@
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
-        "LSKUSDT",
         "CREAMUSDT",
+        "PNTUSDT",
         "ZECUSDT",
+        "PONSUSDT",
+        "STONKUSDT",
+        "PENGUUSDT",
+        "XRPUSDT",
         "SOLUSDT",
-        "PEPEUSDT"
+        "LSKUSDT"
     ],
-    "rationale": "Despite hot CPI data and rising bond yields, BTC remains stable and slightly positive (+0.02%), aligning with opportunistic Reddit sentiment that favors maintaining baseline risk to aggressively whitelist highly decoupled top gainers and high-volume altcoins.",
+    "rationale": "With BTC positive (+2.22%) and approaching $80K resistance, cautiously anticipatory Reddit sentiment regarding the Clarity Act and broader market climate supports maintaining full baseline risk while aggressively whitelisting high-volume decoupled top gainers and trending narrative memecoins to optimally capture momentum alpha.",
     "confidence": 0.95,
-    "learning_to_persist": "Confirmed that during flat-to-positive BTC conditions (+0.02%) near $80K resistance despite hot CPI and high bond yields, maintaining full baseline risk while aggressively whitelisting top gainers and narrative memecoins efficiently captures momentum alpha alongside opportunistic Reddit sentiment."
+    "learning_to_persist": "Confirmed that during positive BTC conditions (+2.22%) approaching $80K resistance alongside cautiously anticipatory Reddit sentiment focusing on legislative news, maintaining full baseline risk while aggressively whitelisting high-volume decoupled top gainers and trending memecoins optimally captures momentum alpha."
 }

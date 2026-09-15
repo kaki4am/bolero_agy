@@ -756,10 +756,10 @@ class TradingBot:
                     cp = self.data_1m[pair]['close'].iloc[-1]
                     
                     mult = self.config.get('ATR_SL_MULT', 2.5)
-                    sl_min_pct = self.config.get('SL_MIN_PCT', 0.015)
+                    sl_min_pct = self.config.get('SL_MIN_PCT', 0.06)
                     sl_dist = (mult * entry_atr) if entry_atr else (cp * 0.02)
                     sl_dist = max(sl_dist, cp * sl_min_pct)
-                    sl_max_pct = self.config.get('SL_MAX_PCT', 0.05)
+                    sl_max_pct = self.config.get('SL_MAX_PCT', 0.07)
                     sl_dist = min(sl_dist, cp * sl_max_pct)
                     
                     amt = (risk_usd / sl_dist) * cp
