@@ -98,7 +98,7 @@ def main():
                         pair_inds = dashboard_data.get(p['pair'])
                         if pair_inds:
                             atr = pair_inds.get('atr', 0)
-                            bu = "UP" if pair_inds.get('btc_uptrend') else "DOWN"
+                            alt_24h_ret = pair_inds.get('alt_24h_ret', 0)
                             alt_4h_ret = pair_inds.get('alt_4h_ret', 0)
                             btc_4h_ret = pair_inds.get('btc_4h_ret', 0)
                             bb_width = pair_inds.get('bb_width', 0)
@@ -109,7 +109,7 @@ def main():
                             
                             pnl_text += f"  ↳ Alt 4h: {alt_4h_ret:.1f}% vs BTC 4h: {btc_4h_ret:.1f}% | 1H Vol: {hourly_vol:,.0f} vs Avg: {avg_vol:,.0f}\n"
                             pnl_text += f"  ↳ BBW: {bb_width:.4f} (Prev: {bb_width_prev:.4f}) | BBU: {bbu:.4f}\n"
-                            pnl_text += f"  ↳ 1h ATR: {atr:.4f} | BTC 15m: {bu}\n"
+                            pnl_text += f"  ↳ 1h ATR: {atr:.4f} | Alt 24h: {alt_24h_ret:.1f}%\n"
                 
 
                 
