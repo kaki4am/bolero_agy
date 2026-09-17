@@ -1,18 +1,17 @@
 {
-    "RISK_MULTIPLIER": 0.4,
-    "SL_MULT_OFFSET": -0.25,
-    "VOL_SPIKE_MULT_OFFSET": 0.1,
-    "PORTFOLIO_EJECT_OFFSET": 0.6,
+    "RISK_MULTIPLIER": 1.0,
+    "SL_MULT_OFFSET": 0.0,
+    "VOL_SPIKE_MULT_OFFSET": 0.0,
+    "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
-        "SYNUSDT",
-        "ZECUSDT",
-        "ARBUSDT",
+        "ONEUSDT",
         "CREAMUSDT",
-        "XRPUSDT",
-        "HYPEUSDT"
+        "AVAUSDT",
+        "ZECUSDT",
+        "NEARUSDT"
     ],
-    "rationale": "FOMC decision day (25bp hike at ~92.5% probability, 2PM ET) with BTC at -1.30% but the qualitative macro danger environment \u2014 CLARITY Act confirmed dead, decade-high bond yields above 5%, $560M+ liquidations pre-decision, and r/CryptoCurrency exhibiting peak risk-off posture ('wait-and-see' frustration, regulatory resignation, hawkish pivot fear) \u2014 fully overrides the mild raw BTC % change, validating continuation of maximum defensive parameters carried from prior sessions, while SYNUSDT's confirmed short-squeeze breakout (+116%), ZECUSDT/ARBUSDT institutional narratives, and CREAMUSDT/XRPUSDT/HYPEUSDT high-volume momentum remain viable decoupled whitelist candidates awaiting mathematical setups.",
-    "confidence": 0.88,
-    "learning_to_persist": "[AI Manager 2026-09-16 13:00] Confirmed that on FOMC decision day (Sep 16) with BTC at -1.30% but overlaid with CLARITY Act Senate death, ~92.5% probability 25bp rate hike, decade-high bond yields, $560M+ liquidations, and r/CryptoCurrency at sustained peak risk-off posture ('wait-and-see' regulatory frustration, hawkish pivot fear), the qualitative macro danger environment fully overrides the mild raw BTC % change, validating maximum defensive parameters (RISK_MULTIPLIER 0.4, SL -0.25, EJECT 0.6), while SYNUSDT's mechanical short-squeeze breakout (+116%) driven by negative funding rates and liquidation cascades validates aggressive whitelisting of technically-driven momentum outliers alongside institutional narrative tokens (ZECUSDT, ARBUSDT) even during peak defensive postures."
+    "rationale": "With BTC absorbing the Fed rate hike to trade positively at +0.97% and r/CryptoCurrency retail sentiment pivoting toward cautious optimism driven by strategic Bitcoin reserve legislation, baseline risk is fully restored while aggressively whitelisting decoupled breakout and volume leaders ONE, CREAM, AVA, ZEC, and NEAR.",
+    "confidence": 0.92,
+    "learning_to_persist": "[AI Manager 2026-09-17 08:00] Confirmed that during positive BTC conditions (+0.97%) absorbing a Fed rate hike, r/CryptoCurrency sentiment shifts from macro fear toward legislative optimism and altcoin rotation, validating full baseline risk while capturing momentum in top volume gainers."
 }

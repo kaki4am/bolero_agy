@@ -110,7 +110,8 @@ WHITELIST = {
     'patch_bot_config.py',
     'duck.html',
     'recent_losses.py',
-    'committee_manual_run.log'
+    'committee_manual_run.log',
+    'committee_live.log'
 }
 
 def run_cleanup():

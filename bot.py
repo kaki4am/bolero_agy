@@ -48,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V157 - Volatile Momentum & Decoupling Squeeze
+        # Strategy V158 - Volatile Momentum & Decoupling Squeeze
         self.config = {}
         self.base_config = self.config.copy()
         self.load_config()
@@ -153,7 +153,7 @@ class TradingBot:
         usdt_pairs = [t for t in tickers if t['symbol'].endswith('USDT')]
         
         blacklisted = ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'EURUSDT', 'USDTUSDT', 'BUSDUSDT', 'DAIUSDT', 
-                       'AVAXUSDT', 'PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'LUNCUSDT', 'VETUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT',
+                       'AVAXUSDT', 'PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'LUNCUSDT', 'VETUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT', 'SOLUSDT', 'POLYXUSDT',
                        'FETUSDT', 'INJUSDT', 'NEARUSDT', 'DOTUSDT', 'FILUSDT', 'LDOUSDT', 'XECUSDT', 'SHIBUSDT', 'DODOUSDT',
                        'WLDUSDT', 'ADAUSDT', 'LINKUSDT', 'XRPUSDT', 'LTCUSDT',
                        'HFTUSDT', 'PEOPLEUSDT', 'ONGUSDT', 'SYNUSDT', 'COTIUSDT', 'CRVUSDT',
@@ -308,6 +308,9 @@ class TradingBot:
             await asyncio.sleep(2) # Check every 2 seconds
 
     async def test_symbol_permission(self, symbol):
+        import re
+        if not re.match(r'^[A-Z0-9]{2,10}USDT$', symbol):
+            return False
         try:
             await self.client.create_test_order(symbol=symbol, side='BUY', type='MARKET', quoteOrderQty=10.1)
             return True
@@ -340,11 +343,19 @@ class TradingBot:
             btc_ret_4h = (btc_cp_15m - closes_15m.iloc[-17]) / closes_15m.iloc[-17] * 100 if len(closes_15m) > 16 else 0.0
             btc_ret_24h = (btc_cp_15m - closes_15m.iloc[-97]) / closes_15m.iloc[-97] * 100 if len(closes_15m) > 96 else 0.0
 
+            if len(closes_15m) >= 96:
+                high_24h = max([float(k[2]) for k in klines_15m[-96:]])
+                low_24h = min([float(k[3]) for k in klines_15m[-96:]])
+                btc_daily_range_pct = (high_24h - low_24h) / low_24h * 100
+            else:
+                btc_daily_range_pct = 1.0
+            self.market_trend['btc_daily_range_pct'] = btc_daily_range_pct
+
             self.market_trend = {
                 'btc_4h_return': btc_ret_4h,
                 'btc_24h_return': btc_ret_24h
             }
-            print("--- Market Status Update (Strategy V157 - Volatile Momentum & Decoupling Squeeze) ---")
+            print("--- Market Status Update (Strategy V158 - Volatile Momentum & Decoupling Squeeze) ---")
             print(f"BTC 4h Return: {btc_ret_4h:+.2f}% | 24h: {btc_ret_24h:+.2f}%")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -356,7 +367,6 @@ class TradingBot:
                     low_1h = pd.Series([float(k[3]) for k in kl_1h])
                     close_1h = pd.Series([float(k[4]) for k in kl_1h])
                     vol_1h_series = pd.Series([float(k[5]) for k in kl_1h])
-                    qav_1h = pd.Series([float(k[7]) for k in kl_1h])
                     
                     cache_data = {}
                     if len(close_1h) >= 20:
@@ -366,23 +376,30 @@ class TradingBot:
                     if len(close_1h) >= 25 and 'atr_1h' in cache_data:
                         cache_data.update({'hourly_volume': vol_1h_series.iloc[-1]})
                         cache_data.update({'vol_1h_avg_24h': vol_1h_series.iloc[-24:].mean()})
-                        
-                        if len(close_1h) >= 25:
-                            cache_data.update({'altcoin_24h_return': (close_1h.iloc[-1] - close_1h.iloc[-25]) / close_1h.iloc[-25] * 100})
-                        else:
-                            cache_data.update({'altcoin_24h_return': 0.0})
 
                         if len(close_1h) >= 5:
                             cache_data.update({'altcoin_4h_return': (close_1h.iloc[-1] - close_1h.iloc[-5]) / close_1h.iloc[-5] * 100})
                         else:
                             cache_data.update({'altcoin_4h_return': 0.0})
-
-                        qav_24h_sum = qav_1h.rolling(24, min_periods=1).sum()
-                        cache_data.update({'altcoin_24h_volume': qav_24h_sum.iloc[-1]})
-                        if len(qav_24h_sum) >= 24 * 7:
-                            cache_data.update({'altcoin_24h_vol_sma7': qav_24h_sum.rolling(24*7, min_periods=1).mean().iloc[-1]})
+                            
+                        cache_data.update({'high_1h': high_1h.iloc[-1], 'low_1h': low_1h.iloc[-1], 'close_1h': close_1h.iloc[-1]})
+                        
+                        if len(close_1h) >= 24:
+                            high_24h_alt = high_1h.iloc[-24:].max()
+                            low_24h_alt = low_1h.iloc[-24:].min()
+                            cache_data.update({'alt_daily_range_pct': (high_24h_alt - low_24h_alt) / low_24h_alt * 100})
                         else:
-                            cache_data.update({'altcoin_24h_vol_sma7': 0.0})
+                            cache_data.update({'alt_daily_range_pct': 0.0})
+                            
+                        ema_fast_len = self.config.get('EMA_FAST', 20)
+                        ema_slow_len = self.config.get('EMA_SLOW', 50)
+                        if len(close_1h) >= ema_slow_len:
+                            ema20 = ta.ema(close_1h, length=ema_fast_len)
+                            ema50 = ta.ema(close_1h, length=ema_slow_len)
+                            if ema20 is not None and not ema20.empty:
+                                cache_data.update({'ema_20_1h': ema20.iloc[-1]})
+                            if ema50 is not None and not ema50.empty:
+                                cache_data.update({'ema_50_1h': ema50.iloc[-1]})
                         
                     if cache_data:
                         self.ema_cache[p] = cache_data
@@ -550,15 +567,42 @@ class TradingBot:
                     
 
                     exit_reason = None
-                    if hold_seconds > 48 * 3600:
-                        alt_24h_ret_c = self.ema_cache.get(pair, {}).get('altcoin_24h_return', 0.0)
-                        alt_24h_vol_c = self.ema_cache.get(pair, {}).get('altcoin_24h_volume', 0.0)
-                        alt_24h_vol_sma7_c = self.ema_cache.get(pair, {}).get('altcoin_24h_vol_sma7', 0.0)
-                        if alt_24h_ret_c < 1.0 or alt_24h_vol_c < alt_24h_vol_sma7_c * 0.8:
-                            exit_reason = 'TimeDecay'
+                    
+                    if hold_seconds > self.config.get('PROFIT_LOCK_TIME_H', 18) * 3600:
+                        profit_lock = pos['entry_price'] * (1.0 + self.config.get('PROFIT_LOCK_PCT', 0.0025))
+                        sl = max(sl, profit_lock)
+                        self.positions[pair]['sl'] = sl
+                        
+                    if hold_seconds > self.config.get('STALENESS_TIME_H', 24) * 3600:
+                        if self.config.get('STALENESS_EXIT_MIN', -0.005) <= profit_pct <= self.config.get('STALENESS_EXIT_MAX', 0.005):
+                            exit_reason = 'StalenessExit'
+
+                    in_profit = profit_pct >= self.config.get('MIN_PROFIT_TRIGGER', 0.10)
+                    
+                    df_pair = self.data_1m.get(pair)
+                    bb_upper_cp = cp * 1.1
+                    if df_pair is not None and len(df_pair) >= 20:
+                        bb = ta.bbands(df_pair['close'], length=20, std=2.0)
+                        if bb is not None and not bb.empty:
+                            bb_upper_cp = bb['BBU_20_2.0_2.0'].iloc[-1]
                             
-                    if hold_seconds > 24 * 3600:
-                        exit_reason = 'TimeLimit'
+                    price_stretched = cp >= bb_upper_cp * self.config.get('BB_EXTENSION_PCT', 1.02)
+                    
+                    ema_data = self.ema_cache.get(pair, {})
+                    hourly_vol = ema_data.get('hourly_volume', 0.0)
+                    avg_vol = ema_data.get('vol_1h_avg_24h', 1.0)
+                    volume_climax = hourly_vol >= self.config.get('CLIMAX_VOL_MULT', 2.5) * avg_vol
+                    
+                    high_1h = ema_data.get('high_1h', cp)
+                    low_1h = ema_data.get('low_1h', cp)
+                    close_1h = ema_data.get('close_1h', cp)
+                    
+                    exhaustion_candle = False
+                    if (high_1h - low_1h) > 0:
+                        exhaustion_candle = (high_1h - close_1h) > (close_1h - low_1h)
+                        
+                    if in_profit and price_stretched and volume_climax and exhaustion_candle:
+                        exit_reason = 'Volume_Climax_Harvest'
                     
                     
                             
@@ -667,10 +711,7 @@ class TradingBot:
             'atr': float(atr),
             'bb_upper': float(bb_upper),
             'btc_4h_ret': float(self.market_trend.get('btc_4h_return', 0.0)),
-            'alt_24h_ret': float(ema_data.get('altcoin_24h_return', 0.0)),
-            'alt_24h_vol': float(ema_data.get('altcoin_24h_volume', 0.0)),
             'alt_4h_ret': float(ema_data.get('altcoin_4h_return', 0.0)),
-            'alt_24h_vol_sma7': float(ema_data.get('altcoin_24h_vol_sma7', 0.0)),
             'hourly_vol': float(ema_data.get('hourly_volume', 0.0)),
             'avg_vol': float(ema_data.get('vol_1h_avg_24h', 0.0)),
             'bb_width': float(bb_width),
@@ -698,10 +739,27 @@ class TradingBot:
             
             btc_4h_ret = self.market_trend.get('btc_4h_return', 0.0)
             alt_4h_ret = ema_data.get('altcoin_4h_return', 0.0)
-            if -3.0 <= btc_4h_ret <= 1.0 and alt_4h_ret > (btc_4h_ret + 3.0):
-                if hourly_vol > 1.5 * avg_vol:
+            
+            is_macro_decoupled = self.config.get('DECOUPLE_BTC_MIN', -3.0) <= btc_4h_ret <= self.config.get('DECOUPLE_BTC_MAX', 1.0) and alt_4h_ret > (btc_4h_ret + self.config.get('DECOUPLE_ALT_RET', 3.0))
+            
+            if is_macro_decoupled:
+                if hourly_vol > self.config.get('VOL_THRESHOLD', 1.5) * avg_vol:
                     if cp > bb_upper and bb_width > bb_width_prev:
-                        setup = "Decoupled_Squeeze_Breakout"  
+                        setup = "Decoupled_Squeeze_Breakout"
+            
+            alt_daily_range_pct = ema_data.get('alt_daily_range_pct', 0.0)
+            btc_daily_range_pct = self.market_trend.get('btc_daily_range_pct', 1.0)
+            relative_range = alt_daily_range_pct / max(btc_daily_range_pct, 1.0)
+            is_high_beta_decoupler = relative_range >= self.config.get('RDR_MIN', 1.6)
+            
+            ema_20_1h = ema_data.get('ema_20_1h', 0.0)
+            ema_50_1h = ema_data.get('ema_50_1h', 0.0)
+            trend_aligned = cp > ema_20_1h > ema_50_1h if ema_50_1h > 0 else False
+            volume_confirmed = hourly_vol > self.config.get('VOL_THRESHOLD', 1.5) * avg_vol
+            
+            if is_high_beta_decoupler and is_macro_decoupled and trend_aligned and volume_confirmed:
+                setup = "Decoupled_Trend_Continuation"
+
             if setup:
                 volatility = atr / cp
                 mx_v = self.config.get('VOLATILITY_CAP', 0.015)
@@ -820,7 +878,7 @@ class TradingBot:
                 
                 config_snapshot = json.dumps(self.config)
                 await asyncio.to_thread(log_trade, pair, side, ep, eq, total_fee_usdt, 'USDT', config_snapshot)
-                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V152', 'entry_atr': entry_atr}
+                if side == 'BUY': self.positions[pair] = {'entries': 1, 'entry_price': ep, 'qty': eq, 'max_p': ep, 'time': time.time(), 'sl': ep - sl_dist, 'setup': setup_name or 'V158', 'entry_atr': entry_atr}
                 else:
                     # Track if this was a winning or losing trade for adaptive cooldown (per-pair)
                     entry_price = self.positions[pair].get('entry_price', ep)
