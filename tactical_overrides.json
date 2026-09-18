@@ -5,13 +5,13 @@
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
-        "ONEUSDT",
         "CREAMUSDT",
         "AVAUSDT",
+        "ONEUSDT",
         "ZECUSDT",
         "NEARUSDT"
     ],
-    "rationale": "With BTC absorbing the Fed rate hike to trade positively at +0.97% and r/CryptoCurrency retail sentiment pivoting toward cautious optimism driven by strategic Bitcoin reserve legislation, baseline risk is fully restored while aggressively whitelisting decoupled breakout and volume leaders ONE, CREAM, AVA, ZEC, and NEAR.",
-    "confidence": 0.92,
-    "learning_to_persist": "[AI Manager 2026-09-17 08:00] Confirmed that during positive BTC conditions (+0.97%) absorbing a Fed rate hike, r/CryptoCurrency sentiment shifts from macro fear toward legislative optimism and altcoin rotation, validating full baseline risk while capturing momentum in top volume gainers."
+    "rationale": "With BTC coiling positively at +0.78% near $77K post-rate-hike and r/CryptoCurrency retail sentiment exhibiting guarded vigilance while anticipating Q4 cycle continuation, baseline risk parameters are maintained to capture alpha across high-volume momentum breakouts.",
+    "confidence": 0.95,
+    "learning_to_persist": "[AI Manager 2026-09-18 03:00] Confirmed that during positive BTC coiling (+0.78%) near $77K post-rate-hike, cautious but watchful Reddit sentiment eyeing October cycle bottoms supports maintaining full baseline risk while whitelisting high-volume momentum breakouts like CREAM, AVA, ONE, and ZEC."
 }

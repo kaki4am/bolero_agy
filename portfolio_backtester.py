@@ -13,7 +13,7 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V158 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V159 Indicators...")
         blacklist = ['PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'VETUSDT', 'LUNCUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT', 'ENSUSDT', 'PEOPLEUSDT', 'HFTUSDT', 'ONGUSDT', 'DEXEUSDT', 'SYNUSDT', 'HEIUSDT', 'COTIUSDT']
         self.pair_data = {k: v for k, v in self.pair_data.items() if k not in blacklist}
         total = len(self.pair_data)
@@ -248,17 +248,19 @@ class PortfolioBacktester:
                     # Dynamic Drawdown Floor for extended duration (-7%)
                     current_profit_pct = (price - pos['entry_price']) / pos['entry_price']
                     
-                    if hold_time_m > params['PROFIT_LOCK_TIME_H'] * 60:
-                        pos['sl'] = max(pos['sl'], pos['entry_price'] * (1.0 + params['PROFIT_LOCK_PCT']))
+                    if hold_time_m > params.get('PROFIT_LOCK_TIME_H', 18) * 60:
+                        pos['sl'] = max(pos['sl'], pos['entry_price'] * (1.0 + params.get('PROFIT_LOCK_PCT', 0.0025)))
+                    if hold_time_m > 24 * 60 and current_profit_pct >= 0.01:
+                        pos['sl'] = max(pos['sl'], pos['entry_price'] * 1.003)
                         
-                    if hold_time_m > params['STALENESS_TIME_H'] * 60:
-                        if params['STALENESS_EXIT_MIN'] <= current_profit_pct <= params['STALENESS_EXIT_MAX']:
+                    if hold_time_m > params.get('STALENESS_TIME_H', 24) * 60:
+                        if params.get('STALENESS_EXIT_MIN', -0.005) <= current_profit_pct <= params.get('STALENESS_EXIT_MAX', 0.005):
                             exit_reason = "StalenessExit"
                             exit_price = price * (1.0 - slippage_pct)
 
-                    if current_profit_pct >= params['MIN_PROFIT_TRIGGER']:
-                        if price >= s_data['bb_upper'][idx] * params['BB_EXTENSION_PCT']:
-                            if s_data['hourly_volume'][idx] >= params['CLIMAX_VOL_MULT'] * s_data['vol_1h_avg_24h'][idx]:
+                    if current_profit_pct >= params.get('MIN_PROFIT_TRIGGER', 0.1):
+                        if price >= s_data['bb_upper'][idx] * params.get('BB_EXTENSION_PCT', 1.02):
+                            if s_data['hourly_volume'][idx] >= params.get('CLIMAX_VOL_MULT', 2.5) * s_data['vol_1h_avg_24h'][idx]:
                                 h, l, c = s_data['high_1h'][idx], s_data['low_1h'][idx], s_data['close_1h'][idx]
                                 if (h - l) > 0 and (h - c) > (c - l):
                                     exit_reason = "Volume_Climax_Harvest"
@@ -303,23 +305,23 @@ class PortfolioBacktester:
                     
                     btc_4h_ret = s_data['btc_4h_return'][idx]
                     alt_4h_ret = s_data['altcoin_4h_return'][idx]
-                    is_macro_decoupled = params['DECOUPLE_BTC_MIN'] <= btc_4h_ret <= params['DECOUPLE_BTC_MAX'] and alt_4h_ret > (btc_4h_ret + params['DECOUPLE_ALT_RET'])
+                    is_macro_decoupled = params.get('DECOUPLE_BTC_MIN', -3.0) <= btc_4h_ret <= params.get('DECOUPLE_BTC_MAX', 1.0) and alt_4h_ret > (btc_4h_ret + params.get('DECOUPLE_ALT_RET', 3.0))
                     hourly_vol = s_data['hourly_volume'][idx]
                     avg_vol = s_data['vol_1h_avg_24h'][idx]
                     
                     if is_macro_decoupled:
-                        if hourly_vol > params['VOL_THRESHOLD'] * avg_vol:
+                        if hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:
                             bb_width_prev = s_data['bb_width_prev'][idx]
                             bbw = s_data['bb_width'][idx]
                             if price > bb_upper and bbw > bb_width_prev:
                                 setup = "Decoupled_Squeeze_Breakout"  
                                 
                     relative_range = s_data['alt_daily_range_pct'][idx] / max(s_data['btc_daily_range_pct'][idx], 1.0)
-                    is_high_beta = relative_range >= params['RDR_MIN']
+                    is_high_beta = relative_range >= params.get('RDR_MIN', 1.6)
                     ema20, ema50 = s_data['ema_20_1h'][idx], s_data['ema_50_1h'][idx]
                     trend_aligned = price > ema20 > ema50 if ema50 > 0 else False
                     
-                    if is_high_beta and is_macro_decoupled and trend_aligned and hourly_vol > params['VOL_THRESHOLD'] * avg_vol:
+                    if is_high_beta and is_macro_decoupled and trend_aligned and hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:
                         setup = "Decoupled_Trend_Continuation"
 
                     if setup:

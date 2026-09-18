@@ -111,7 +111,8 @@ WHITELIST = {
     'duck.html',
     'recent_losses.py',
     'committee_manual_run.log',
-    'committee_live.log'
+    'committee_live.log',
+    'patch_ideas.py'
 }
 
 def run_cleanup():

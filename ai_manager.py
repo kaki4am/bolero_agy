@@ -96,7 +96,7 @@ def main():
     print("Fetching alpha signals...")
     alpha = get_alpha_signals()
 
-    prompt = f"""You are the dynamic AI Risk & Momentum Manager for a live Binance spot trading bot that uses a Trend-Filtered BB Squeeze Breakout strategy (15m to 24h holds).
+    prompt = f"""You are the dynamic AI Risk & Momentum Manager for a live Binance spot trading bot that uses a Volatile Momentum & Decoupling Squeeze strategy (15m to 24h holds).
 
 INPUT TELEMETRY:
 - Local Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}

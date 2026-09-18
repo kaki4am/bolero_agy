@@ -1,37 +1,47 @@
-### System Health & Operational Audit
-
-* **Services & Engine:** `trading-bot` and `backtest-optimizer` are operational. The Optuna Bayesian tuner is running actively with positive convergence (latest train score: **11.23%** at 07:30).
-* **Symbol Ingestion Defect (Priority):** A trade execution failure occurred on pair `牛来USDT` (`API error -2010: this symbol is not permitted for this account`). The market scanner is picking up non-standard/unpermitted symbols.
-* **Macro Regime:** BTC has stabilized from the Sep 15–16 FOMC/CLARITY sell-off, printing **+0.91% (24h)** and **+0.04% to +0.35% (4h)**. However, the system remains locked in maximum defensive mode (`Risk Mult = 0.4`, `SL Offset = -0.25`).
-
----
-
-### Performance & Trade Dynamics Review
-
-| Metric | Last 24h Value | Analysis |
-| :--- | :--- | :--- |
-| **Realized PnL** | **+0.481 USDT** | Net positive despite high macro turbulence. |
-| **Best Performers** | `AVAUSDT` (+15.33%, 90h hold)<br>`DASHUSDT` (+8.35%, 204h hold) | Confirms that multi-day momentum holds generate primary alpha; rejects fixed hold caps. |
-| **Stopped Trades** | `HIVEUSDT` (-5.99%)<br>`PUNDIXUSDT` (-5.44%)<br>`ARBUSDT` (-4.65%) | Stop-outs clustered cleanly between -4.5% and -6.0%, absorbing normal market noise. |
-| **Risk/Reward** | **2.6:1 Win/Loss Ratio** | Asymmetric upside (+15.3% vs -5.9%) preserved positive net expectation. |
+# System Health & Risk Analysis Report
+**Timestamp:** `2026-09-18 03:00:38 UTC`  
+**Strategy Version:** `V158 - Volatile Momentum & Decoupling Squeeze`  
+**Portfolio Equity:** `~$293.99 USDT` (24h Realized PnL: `+19.33 USDT` / `+6.6%`)
 
 ---
 
-### Structural & Risk Management Proposals
+### 1. System Health & Execution Review
 
-#### 1. Symbol Sanitization & Permissions Guard (Immediate)
-* **Pre-Trade Filter:** Implement a strict pre-flight symbol validation regex (`^[A-Z0-9]{2,10}USDT$`) before routing orders to the execution engine.
-* **Exchange Permissions Check:** Cross-reference scanned symbols against the account's `/api/v3/exchangeInfo` tradable permissions list to prevent API rejection codes (`-2010`) on foreign/restricted tokens like `牛来USDT`.
+* **Service Status:** `trading-bot` and `backtest-optimizer` are operational (`OK`). 0 failed trades in the last hour.
+* **Bayesian Tuner (Optuna):** Active and healthy (last run 0.11h ago). New best train score reached **17.60%**.
+* **Order Execution Failure:**
+  * Pair: `BNCBUSDT` (Failure ID: 130, `2026-09-17 16:38:01`)
+  * Error: `apierror(code=-2010): this symbol is not permitted for this account.`
+  * **Finding:** While 195 restricted pairs are loaded, `BNCBUSDT` bypassed the whitelist filter and failed at execution.
 
-#### 2. Phased Normalization of Tactical Risk Multipliers
-* **De-escalate Crisis Posture:** The current `Risk Mult = 0.4` was set for -3.6% BTC dips and FOMC rate hike fears. With BTC stabilizing at +0.91% (24h), prepare a phased de-escalation:
-  * **Phase 1 (Current):** Maintain `Risk Mult = 0.4` until BTC 4h sustains above `+0.50%`.
-  * **Phase 2 (Recovery):** Incrementally step up to `Risk Mult = 0.65` and normalize `SL Offset` to `-0.10` / `0.00` once BTC confirms support above $76K without new macro liquidations.
+---
 
-#### 3. Stop-Loss & Take-Profit Governance
-* **Maintain Wide SL Breathing Room:** Do **not** reinstitute hard caps at -3.0% or aggressive low-ADX trailing stops. Current stop execution (-4.5% to -6.0%) is optimal to avoid premature liquidations.
-* **Preserve Uncapped Multi-Day Holds:** Reaffirm rejection of the 72h hold limit; `DASHUSDT` (204h) and `AVAUSDT` (90h) prove that the strategy’s edge relies entirely on patience during extended decoupling trends.
+### 2. Performance & Risk Assessment
 
-#### 4. Portfolio Guards & Restricted List
-* **Maintain Delisted Asset Purge:** Keep verified project-cessation/pivot tokens permanently blacklisted (`KDAUSDT`, `LSKUSDT`, `SAGAUSDT`).
-* **Avoid Overfitting Filters:** Continue to reject TOD (Time-of-Day), DOW (Day-of-Week), and 15m trend guards, preserving execution logic purity while Optuna optimizes the core strategy parameters.
+* **Trade Asymmetry:** Strong positive skew.
+  * **Winners:** Multi-day runners captured massive moves (`ARBUSDT` +15.64% over 36h, `AVAUSDT` +15.33% over 90h, `DASHUSDT` +8.35% over 204h).
+  * **Losers:** Contained losses (`TLMUSDT` -3.48% exited in 36m, `ZENUSDT` +0.20% near breakeven).
+* **Hold Time Validation:** Long holding periods (up to 204h) generated the bulk of alpha, re-confirming that time-based hold caps (e.g., rejected 72h limit) would be counter-productive.
+* **Macro Regime:** BTC is coiling positively (4h: `+0.74%`, 24h: `+0.81%`). Baseline risk posture (`Risk Mult=1.0`, `SL Offset=0.0`) is appropriate.
+
+---
+
+### 3. Structural & Risk Management Proposals
+
+#### A. Symbol Whitelist & Exchange Permission Guard (Immediate)
+* **Action:** Permanently append `BNCBUSDT` to the static restricted pairs list (`restricted_pairs.json` / dynamic blacklist).
+* **Structural Guard:** In the universe scanner, add a pre-flight check verifying exchange account permissions (`permissions` / `isSpotTradingAllowed` flags via Binance exchange info API) before generating order signals, preventing `-2010` rejection overhead.
+
+#### B. Stop Loss & Take Profit Configuration
+* **Stop Loss:** **Maintain baseline SL structure.** `TLMUSDT` was cleanly cut at -3.48%, demonstrating proper protection without prematurely choking high-volatility pairs. **Reject** any hard cap tightening below 3.5%, as past learnings show tighter caps induce premature liquidations during normal market noise.
+* **Take Profit:** **Retain tiered target TP.** Both `ARBUSDT` (+15.6%) and `AVAUSDT` (+15.3%) achieved full target fills. Do not introduce aggressive trailing stops, which previously choked momentum decoupling runners.
+
+#### C. Portfolio Risk Posture
+* **Exposure Multiplier:** Keep `RISK_MULTIPLIER = 1.0` and `SL_OFFSET = 0.0` while BTC 24h return remains positive (`> 0.0%`).
+* **Macro Escalation Thresholds:** Maintain existing trigger logic:
+  * **BTC -1.0% to -3.0%:** Reduce risk multiplier to `0.75 - 0.50` with slight SL tightening.
+  * **BTC < -3.0% or acute systemic risk:** Reduce risk multiplier to `0.40` with defensive eject offsets (`0.60`).
+* **Time-Based Filters:** Maintain full rejection of Time-of-Day (TOD) and Day-of-Week (DOW) exclusions to avoid forward-test overfitting.
+
+#### D. Tuner Promotion Guard
+* Ensure parameters from Optuna's latest high-scoring run (17.60%) undergo mandatory out-of-sample forward-testing verification across contrasting market regimes before live parameter replacement.

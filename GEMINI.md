@@ -1,4 +1,4 @@
-# Strategy V158 - Volatile Momentum & Decoupling Squeeze
+# Strategy V159 - Volatile Momentum & Decoupling Squeeze
 
 ## Overview
 Binance spot trading bot managed by an autonomous AI agent. The AI has full authority to research, discover, and deploy any statistically profitable entry setups (e.g., trend following, momentum breakouts, capitulation bounces) to maximize PnL and outperform a Bitcoin Buy-and-Hold baseline.

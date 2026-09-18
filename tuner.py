@@ -32,9 +32,20 @@ SEARCH_SPACE = {
     'SCALE_3_POS': [0.1, 0.2, 0.3, 0.4]
 }
 
+def load_config():
+    if os.path.exists('config.json'):
+        try:
+            with open('config.json', 'r') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
 def save_config(params):
+    current = load_config()
+    current.update(params)
     with open('config.json', 'w') as f:
-        json.dump(params, f, indent=4)
+        json.dump(current, f, indent=4)
 
 def save_status(status):
     with open(STATUS_FILE, 'w') as f:
@@ -242,10 +253,12 @@ async def optimize():
     status["status"] = "Running Bayesian Optimization (Optuna)"
     log_event(status, "Simulation started. Running 100 trials on In-Sample data.")
     
+    base_config = load_config()
     start_time = time.time()
     
     def objective(trial):
-        params = {
+        params = dict(base_config)
+        params.update({
             'MIN_VOLATILITY': trial.suggest_categorical('MIN_VOLATILITY', SEARCH_SPACE['MIN_VOLATILITY']),
             'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 0.5, 3.5),
             'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 5.0, 50.0),
@@ -259,7 +272,7 @@ async def optimize():
             'SCALE_1_POS': trial.suggest_float('SCALE_1_POS', 0.5, 1.0),
             'SCALE_2_POS': trial.suggest_float('SCALE_2_POS', 0.3, 0.8),
             'SCALE_3_POS': trial.suggest_float('SCALE_3_POS', 0.1, 0.6)
-        }
+        })
         
         train_profit = bt_train.run(params)
         
@@ -308,7 +321,8 @@ async def optimize():
     
     study.optimize(objective, n_trials=100)
     
-    best_params = study.best_params
+    best_params = dict(base_config)
+    best_params.update(study.best_params)
     train_score = study.best_value
     
     log_event(status, f"Training complete. Best In-Sample Profit: {train_score:.2f}%. Running Out-Of-Sample Validation...")

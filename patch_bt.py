@@ -1,52 +1,72 @@
-import re
+with open("/root/portfolio_backtester.py", "r") as f:
+    lines = f.readlines()
 
-with open('/root/portfolio_backtester.py', 'r') as f:
-    code = f.read()
+new_lines = []
+skip = False
+for i, line in enumerate(lines):
+    if "if is_macro_decoupled:" in line and "if hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:" in lines[i+1]:
+        skip = True
+        new_lines.append(line)
+        continue
+    if skip:
+        if "setup = \"Decoupled_Trend_Continuation\"" in line:
+            # Done skipping
+            indent = "                    "
+            new_lines.append(indent + "h1, l1, c1 = s_data['high_1h'][idx], s_data['low_1h'][idx], s_data['close_1h'][idx]\n")
+            new_lines.append(indent + "atr_1h = s_data['atr'][idx]\n")
+            new_lines.append(indent + "vol = s_data['hourly_volume'][idx]\n")
+            new_lines.append(indent + "vol_avg20 = s_data['vol_1h_avg_20h'][idx]\n")
+            new_lines.append(indent + "range_expansion = (h1 - l1) > 1.5 * atr_1h\n")
+            new_lines.append(indent + "close_strength = (c1 - l1) / (h1 - l1) >= 0.70 if (h1 - l1) > 0 else False\n")
+            new_lines.append(indent + "current_hour = ts.hour\n")
+            new_lines.append(indent + "vol_thresh = 1.8\n")
+            new_lines.append(indent + "if current_hour in [13, 17, 20, 22]:\n")
+            new_lines.append(indent + "    vol_thresh = 1.8 * 1.15\n")
+            new_lines.append(indent + "vol_confirmed = vol > vol_thresh * vol_avg20\n")
+            new_lines.append(indent + "if is_macro_decoupled and range_expansion and close_strength and vol_confirmed:\n")
+            new_lines.append(indent + "    bb_width_prev = s_data['bb_width_prev'][idx]\n")
+            new_lines.append(indent + "    bbw = s_data['bb_width'][idx]\n")
+            new_lines.append(indent + "    if price > bb_upper and bbw > bb_width_prev:\n")
+            new_lines.append(indent + "        setup = \"Decoupled_Squeeze_Breakout\"\n")
+            new_lines.append(indent + "relative_range = s_data['alt_daily_range_pct'][idx] / max(s_data['btc_daily_range_pct'][idx], 1.0)\n")
+            new_lines.append(indent + "is_high_beta = relative_range >= params.get('RDR_MIN', 1.6)\n")
+            new_lines.append(indent + "ema20, ema50 = s_data['ema_20_1h'][idx], s_data['ema_50_1h'][idx]\n")
+            new_lines.append(indent + "trend_aligned = price > ema20 > ema50 if ema50 > 0 else False\n")
+            new_lines.append(indent + "if is_high_beta and is_macro_decoupled and trend_aligned and range_expansion and close_strength and vol_confirmed:\n")
+            new_lines.append(indent + "    setup = \"Decoupled_Trend_Continuation\"\n")
+            skip = False
+        continue
 
-# 1. precalculate_all BTC 4h return
-btc_24h_code = r"btc_15m_indexed\['btc_24h_return'\] = \(btc_15m_indexed\['close'\] - btc_15m_indexed\['close'\]\.shift\(96\)\) / btc_15m_indexed\['close'\]\.shift\(96\) \* 100"
-new_btc = """btc_15m_indexed['btc_24h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(96)) / btc_15m_indexed['close'].shift(96) * 100
-            btc_15m_indexed['btc_4h_return'] = (btc_15m_indexed['close'] - btc_15m_indexed['close'].shift(16)) / btc_15m_indexed['close'].shift(16) * 100"""
-code = re.sub(btc_24h_code, new_btc, code)
+    if "if price >= s_data['bb_upper'][idx] * params.get('BB_EXTENSION_PCT', 1.02):" in line:
+        skip = True
+        continue
+    if skip and "exit_price = price * (1.0 - slippage_pct)" in line:
+        indent = "                        "
+        new_lines.append(indent + "h, l, c = s_data['high_1h'][idx], s_data['low_1h'][idx], s_data['close_1h'][idx]\n")
+        new_lines.append(indent + "o = s_data['open_1h'][idx]\n")
+        new_lines.append(indent + "vol = s_data['hourly_volume'][idx]\n")
+        new_lines.append(indent + "vol_avg20 = s_data['vol_1h_avg_20h'][idx]\n")
+        new_lines.append(indent + "highest_24h = s_data['high_24h_max'][idx]\n")
+        new_lines.append(indent + "if h >= highest_24h and (h - l) > 0:\n")
+        new_lines.append(indent + "    wick_pct = (h - max(o, c)) / (h - l)\n")
+        new_lines.append(indent + "    if wick_pct >= 0.55 and vol > 2.5 * vol_avg20:\n")
+        new_lines.append(indent + "        exit_reason = \"Climax_Wick_Rejection\"\n")
+        new_lines.append(indent + "        exit_price = price * (1.0 - slippage_pct)\n")
+        skip = False
+        continue
 
-align_btc = r"'btc_24h_return': btc_15m_indexed\['btc_24h_return'\]\n\s+\}\)"
-new_align = """'btc_24h_return': btc_15m_indexed['btc_24h_return'],
-                'btc_4h_return': btc_15m_indexed['btc_4h_return']
-            })"""
-code = re.sub(align_btc, new_align, code)
+    if "if hold_time_m > params.get('PROFIT_LOCK_TIME_H', 18) * 60:" in line:
+        new_lines.append(line)
+        new_lines.append("                        pos['sl'] = max(pos['sl'], pos['entry_price'] * (1.0 + params.get('PROFIT_LOCK_PCT', 0.0025)))\n")
+        new_lines.append("                    if hold_time_m > 24 * 60 and high_profit_pct >= 0.01:\n")
+        new_lines.append("                        pos['sl'] = max(pos['sl'], pos['entry_price'] * 1.003)\n")
+        skip = True
+        continue
+    if skip and "pos['sl'] = max(pos['sl'], pos['entry_price'] * (1.0 + params.get('PROFIT_LOCK_PCT', 0.0025)))" in line:
+        skip = False
+        continue
 
-# 2. altcoin 1h context
-alt_1h_code = r"df_1h\['altcoin_24h_return'\] = \(df_1h\['close'\] - df_1h\['close'\]\.shift\(24\)\) / df_1h\['close'\]\.shift\(24\) \* 100\n\s+df_1h\['altcoin_24h_volume'\] = df_1h\['qav'\]\.rolling\(24, min_periods=1\)\.sum\(\)\n\s+df_1h\['altcoin_24h_vol_sma7'\] = df_1h\['altcoin_24h_volume'\]\.rolling\(24\*7, min_periods=1\)\.mean\(\)"
+    new_lines.append(line)
 
-new_alt = """df_1h['altcoin_24h_return'] = (df_1h['close'] - df_1h['close'].shift(24)) / df_1h['close'].shift(24) * 100
-            df_1h['altcoin_4h_return'] = (df_1h['close'] - df_1h['close'].shift(4)) / df_1h['close'].shift(4) * 100
-            df_1h['altcoin_24h_volume'] = df_1h['qav'].rolling(24, min_periods=1).sum()
-            df_1h['altcoin_24h_vol_sma7'] = df_1h['altcoin_24h_volume'].rolling(24*7, min_periods=1).mean()
-            if len(df_1h) >= 14:
-                df_1h['rsi_1h'] = ta.rsi(df_1h['close'], length=14)
-            else:
-                df_1h['rsi_1h'] = 50.0
-            
-            if len(df_1h) >= 20:
-                bb_1h = ta.bbands(df_1h['close'], length=20, std=2.0)
-                if bb_1h is not None and not bb_1h.empty:
-                    bbw_1h = (bb_1h['BBU_20_2.0_2.0'] - bb_1h['BBL_20_2.0_2.0']) / bb_1h['BBM_20_2.0_2.0']
-                    df_1h['bbw_1h'] = bbw_1h
-                else:
-                    df_1h['bbw_1h'] = 0.0
-            else:
-                df_1h['bbw_1h'] = 0.0
-            df_1h['min_bbw_24_1h'] = df_1h['bbw_1h'].rolling(24, min_periods=1).min()"""
-code = re.sub(alt_1h_code, new_alt, code)
-
-# align 1m index
-align_1m_code = r"indicators\['altcoin_24h_return'\] = df_1h_idx\['altcoin_24h_return'\]\.reindex\(df_1m_idx\.index\)\.ffill\(\)\.bfill\(\)\.fillna\(0\)"
-new_align_1m = """indicators['altcoin_24h_return'] = df_1h_idx['altcoin_24h_return'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['altcoin_4h_return'] = df_1h_idx['altcoin_4h_return'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['rsi_1h'] = df_1h_idx['rsi_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(50.0)
-            indicators['bbw_1h'] = df_1h_idx['bbw_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0.0)
-            indicators['min_bbw_24_1h'] = df_1h_idx['min_bbw_24_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0.0)"""
-code = re.sub(align_1m_code, new_align_1m, code)
-
-with open('/root/portfolio_backtester.py', 'w') as f:
-    f.write(code)
+with open("/root/portfolio_backtester.py", "w") as f:
+    f.writelines(new_lines)

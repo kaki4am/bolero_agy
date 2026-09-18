@@ -111,8 +111,20 @@ def check_backtester():
         tester.pair_data = {'TESTUSDT': {'1m': mock_df_1m, '15m': mock_df_15m}}
         tester.precalculate_all()
         results = tester.run(config_params)
+        print(f"  [PASS] Backtester finished test run with config.json. Profit: {results}%")
         
-        print(f"  [PASS] Backtester finished test run. Profit: {results}%")
+        # Verify backtester safety against partial and tuner params
+        tester.run({})
+        print("  [PASS] Backtester handles empty parameter dict safely.")
+        
+        if os.path.exists('tuner.py'):
+            spec_t = importlib.util.spec_from_file_location("tuner", "tuner.py")
+            tuner_mod = importlib.util.module_from_spec(spec_t)
+            spec_t.loader.exec_module(tuner_mod)
+            sample_tuner = {k: v[0] for k, v in tuner_mod.SEARCH_SPACE.items()}
+            tester.run(sample_tuner)
+            print("  [PASS] Backtester handles tuner SEARCH_SPACE samples safely.")
+        
         return True
     except Exception as e:
         print(f"  [FAIL] backtester.logic: {e}")

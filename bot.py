@@ -48,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V158 - Volatile Momentum & Decoupling Squeeze
+        # Strategy V159 - Volatile Momentum & Decoupling Squeeze
         self.config = {}
         self.base_config = self.config.copy()
         self.load_config()
@@ -355,7 +355,7 @@ class TradingBot:
                 'btc_4h_return': btc_ret_4h,
                 'btc_24h_return': btc_ret_24h
             }
-            print("--- Market Status Update (Strategy V158 - Volatile Momentum & Decoupling Squeeze) ---")
+            print("--- Market Status Update (Strategy V159 - Volatile Momentum & Decoupling Squeeze) ---")
             print(f"BTC 4h Return: {btc_ret_4h:+.2f}% | 24h: {btc_ret_24h:+.2f}%")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -571,6 +571,9 @@ class TradingBot:
                     if hold_seconds > self.config.get('PROFIT_LOCK_TIME_H', 18) * 3600:
                         profit_lock = pos['entry_price'] * (1.0 + self.config.get('PROFIT_LOCK_PCT', 0.0025))
                         sl = max(sl, profit_lock)
+                        self.positions[pair]['sl'] = sl
+                    if hold_seconds > 24 * 3600 and profit_pct >= 0.01:
+                        sl = max(sl, pos['entry_price'] * 1.003)
                         self.positions[pair]['sl'] = sl
                         
                     if hold_seconds > self.config.get('STALENESS_TIME_H', 24) * 3600:
