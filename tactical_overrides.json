@@ -5,13 +5,14 @@
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
-        "CREAMUSDT",
-        "AVAUSDT",
         "ONEUSDT",
+        "CREAMUSDT",
+        "NEARUSDT",
         "ZECUSDT",
-        "NEARUSDT"
+        "ARUSDT",
+        "SOLUSDT"
     ],
-    "rationale": "With BTC coiling positively at +0.78% near $77K post-rate-hike and r/CryptoCurrency retail sentiment exhibiting guarded vigilance while anticipating Q4 cycle continuation, baseline risk parameters are maintained to capture alpha across high-volume momentum breakouts.",
+    "rationale": "With BTC up +5.61% holding firmly above $81K and Reddit r/CryptoCurrency debating cycle peak risks and disciplined portfolio rebalancing, full baseline risk is maintained to capture high-volume altcoin breakout momentum.",
     "confidence": 0.95,
-    "learning_to_persist": "[AI Manager 2026-09-18 03:00] Confirmed that during positive BTC coiling (+0.78%) near $77K post-rate-hike, cautious but watchful Reddit sentiment eyeing October cycle bottoms supports maintaining full baseline risk while whitelisting high-volume momentum breakouts like CREAM, AVA, ONE, and ZEC."
+    "learning_to_persist": "[AI Manager 2026-09-19 03:00] Confirmed that during strong bullish BTC expansion (+5.61%) holding above $81K, r/CryptoCurrency discussions debating cycle peaks and rebalancing strategies support maintaining full baseline risk while targeting top breakout and volume leaders like ONE, CREAM, NEAR, ZEC, and AR."
 }

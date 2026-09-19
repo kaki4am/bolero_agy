@@ -1,47 +1,47 @@
-# System Health & Risk Analysis Report
-**Timestamp:** `2026-09-18 03:00:38 UTC`  
-**Strategy Version:** `V158 - Volatile Momentum & Decoupling Squeeze`  
-**Portfolio Equity:** `~$293.99 USDT` (24h Realized PnL: `+19.33 USDT` / `+6.6%`)
+# System & Risk Analyst Report
+
+**Assessment Timestamp:** 2026-09-19 03:00:29 UTC  
+**System Health:** **OPTIMAL / HEALTHY**  
+**Market Regime:** Bullish Expansion / Squeeze Continuation (BTC 24h: +5.61%, 4h: +0.20%)
 
 ---
 
-### 1. System Health & Execution Review
-
-* **Service Status:** `trading-bot` and `backtest-optimizer` are operational (`OK`). 0 failed trades in the last hour.
-* **Bayesian Tuner (Optuna):** Active and healthy (last run 0.11h ago). New best train score reached **17.60%**.
-* **Order Execution Failure:**
-  * Pair: `BNCBUSDT` (Failure ID: 130, `2026-09-17 16:38:01`)
-  * Error: `apierror(code=-2010): this symbol is not permitted for this account.`
-  * **Finding:** While 195 restricted pairs are loaded, `BNCBUSDT` bypassed the whitelist filter and failed at execution.
+### 1. System Health & Infrastructure Audit
+* **Trading Engine (`trading-bot`):** Active and operating nominally. 0 failed trades in the last hour; zero execution errors over the last 24h.
+* **Bayesian Optimizer (`backtest-optimizer`):** Active and healthy. Recent log confirmation: `New Best Train Score: 11.57%` at 02:52:44 UTC.
+* **Restricted Pairs Guard:** Active with 207 pairs excluded, shielding against illiquid and halted pairs.
+* **Capital Growth:** Equity successfully compounded to **$364.36** (+24.4% 24h ROI on realized trades).
 
 ---
 
-### 2. Performance & Risk Assessment
-
-* **Trade Asymmetry:** Strong positive skew.
-  * **Winners:** Multi-day runners captured massive moves (`ARBUSDT` +15.64% over 36h, `AVAUSDT` +15.33% over 90h, `DASHUSDT` +8.35% over 204h).
-  * **Losers:** Contained losses (`TLMUSDT` -3.48% exited in 36m, `ZENUSDT` +0.20% near breakeven).
-* **Hold Time Validation:** Long holding periods (up to 204h) generated the bulk of alpha, re-confirming that time-based hold caps (e.g., rejected 72h limit) would be counter-productive.
-* **Macro Regime:** BTC is coiling positively (4h: `+0.74%`, 24h: `+0.81%`). Baseline risk posture (`Risk Mult=1.0`, `SL Offset=0.0`) is appropriate.
+### 2. Performance Audit (Last 24 Hours)
+* **Total Realized PnL:** **+$71.36 USDT** across 18 completed trades (0 failures, 100% win rate on recent exits).
+* **Alpha Capture & Decoupling:** Strong profit capture across decoupled altcoins (e.g., ARUSDT: +15.78% / +$23.33; RAYUSDT: +15.77% / +$8.58; ARBUSDT: +11.39%).
+* **Holding Horizon:** Trade duration varied from 5.5h up to 205h (e.g., APTUSDT 205h, RAYUSDT 170h). Patient holding through consolidation has proven critical to capturing double-digit alpha without premature churn.
 
 ---
 
 ### 3. Structural & Risk Management Proposals
 
-#### A. Symbol Whitelist & Exchange Permission Guard (Immediate)
-* **Action:** Permanently append `BNCBUSDT` to the static restricted pairs list (`restricted_pairs.json` / dynamic blacklist).
-* **Structural Guard:** In the universe scanner, add a pre-flight check verifying exchange account permissions (`permissions` / `isSpotTradingAllowed` flags via Binance exchange info API) before generating order signals, preventing `-2010` rejection overhead.
+#### A. Position Sizing & Exposure Multipliers
+* **Recommendation:** **Maintain `RISK_MULTIPLIER = 1.0` and `SL_OFFSET = 0.0`.**
+* **Rationale:** BTC is maintaining bullish structure (+5.61% 24h, holding >$81K). Prior learnings clearly reject premature defensive throttling during mild intraday consolidations while macro momentum is positive.
 
-#### B. Stop Loss & Take Profit Configuration
-* **Stop Loss:** **Maintain baseline SL structure.** `TLMUSDT` was cleanly cut at -3.48%, demonstrating proper protection without prematurely choking high-volatility pairs. **Reject** any hard cap tightening below 3.5%, as past learnings show tighter caps induce premature liquidations during normal market noise.
-* **Take Profit:** **Retain tiered target TP.** Both `ARBUSDT` (+15.6%) and `AVAUSDT` (+15.3%) achieved full target fills. Do not introduce aggressive trailing stops, which previously choked momentum decoupling runners.
+#### B. Stop Loss (SL) Governance
+* **Recommendation:** **Preserve wide, volatility-tolerant SL; do NOT enforce hard SL caps or tight ATR/ADX trailing stops.**
+* **Rationale:** Historical attempts to enforce a -3.0% hard SL cap or volatility-tightened trailing stops caused premature exits on high-beta winners (like ARUSDT and RAYUSDT) before major trend legs materialized. The current wide buffer is directly responsible for the 100% recent win rate.
 
-#### C. Portfolio Risk Posture
-* **Exposure Multiplier:** Keep `RISK_MULTIPLIER = 1.0` and `SL_OFFSET = 0.0` while BTC 24h return remains positive (`> 0.0%`).
-* **Macro Escalation Thresholds:** Maintain existing trigger logic:
-  * **BTC -1.0% to -3.0%:** Reduce risk multiplier to `0.75 - 0.50` with slight SL tightening.
-  * **BTC < -3.0% or acute systemic risk:** Reduce risk multiplier to `0.40` with defensive eject offsets (`0.60`).
-* **Time-Based Filters:** Maintain full rejection of Time-of-Day (TOD) and Day-of-Week (DOW) exclusions to avoid forward-test overfitting.
+#### C. Take Profit (TP) & Profit Locking
+* **Recommendation:** **Retain existing multi-tier TP logic (10%–16% targets).**
+* **Rationale:** Recent trades cleanly hit upper TP targets (ARUSDT closed at +15.78% at 02:53:53 UTC). Premature scaling out or tight trailing stops would have truncated these outsized gains.
 
-#### D. Tuner Promotion Guard
-* Ensure parameters from Optuna's latest high-scoring run (17.60%) undergo mandatory out-of-sample forward-testing verification across contrasting market regimes before live parameter replacement.
+#### D. Portfolio Guards & Compounding Protections
+* **Single-Asset Concentration Guard:** With total equity now at **$364.36**, ensure maximum per-position allocation remains strictly capped at **15%–20% of current equity** to avoid over-concentration during rapid compounding.
+* **Maintain Rejection of Time-Based Exits:** Reject any proposals for strict 72h hold limits or Day-of-Week/Time-of-Day filters; lengthy holds (>100h) on high-quality setups remain among the system's largest PnL drivers.
+* **Parameter Deployment Protocol:** Keep Optuna's latest high-scoring parameter set (11.57%) in the backtest validation pipeline; do not promote new parameter sets to live trading until out-of-sample forward stability is verified against Strategy V159 baseline.
+
+---
+
+### 4. Summary Verdict
+* **No immediate parameter intervention required.**
+* The current strategy configuration (`Strategy V159 - Volatile Momentum & Decoupling Squeeze`) is performing at peak efficiency. Maintain full baseline risk and continue letting running winners reach their target profit thresholds.

@@ -13,8 +13,11 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V159 Indicators...")
-        blacklist = ['PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'VETUSDT', 'LUNCUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT', 'ENSUSDT', 'PEOPLEUSDT', 'HFTUSDT', 'ONGUSDT', 'DEXEUSDT', 'SYNUSDT', 'HEIUSDT', 'COTIUSDT']
+        if status_callback: status_callback("Calculating Strategy V160 Indicators...")
+        import json, os
+        blacklist = []
+        if os.path.exists("restricted_pairs.json"):
+            with open("restricted_pairs.json", "r") as f: blacklist = json.load(f)
         self.pair_data = {k: v for k, v in self.pair_data.items() if k not in blacklist}
         total = len(self.pair_data)
         
