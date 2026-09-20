@@ -1,13 +1,9 @@
-I have successfully audited the codebase against the instructions detailed in `/tmp/hygiene_prompt.md`. 
+I have completed the requested audit based on the instructions in `/tmp/hygiene_prompt.md`.
 
-Here is a summary of the actions taken:
-- **Dead Indicator Math**: I meticulously traced through all indicator calculations in `bot.py` (`calc_indicators`, `fetch_macro_trends`) and `portfolio_backtester.py` (`precalculate_all`). I verified that all calculated variables (such as Bollinger Bands, EMA, ATR, volumes, and returns) are indeed utilized further down in the trading condition `IF` statements. There are no leftover MACD, ADX, or SMA calculations wasting CPU cycles in the active logic.
-- **Unused Variables & Imports**: I ran an AST and linting trace across the files and confirmed there are no unused Python imports or orphaned variables.
-- **Clean Code (Loops and DB Calls)**: I checked `bot.py` for suboptimal loop paradigms or redundant queries. Functions such as `sync_positions_from_db()` behave optimally, executing an expensive DB call exactly once via a fallback evaluation only when needed, avoiding unnecessary per-pair round trips.
+Here is a summary of the findings:
 
-I've generated a detailed breakdown in `/root/hygiene_report.md` as requested. No actual destructive file edits were necessary as there was no dead logic negatively impacting performance.
-portfolio_backtester.py`.
-- **Finding**: The `sync_positions_from_db` optimally caches local positions and only triggers `read_db()` exactly once per cycle via a lazy fallback `if db_df is None:` guard instead of per-pair. Loops are constrained and adequately used.
-- **Action**: No redundant database calls or unused loops were found.
+1.  **Dead Indicator Math**: I rigorously scanned the entry/exit logic in `bot.py` and `portfolio_backtester.py`. I verified that all calculated indicators (`ta.bbands`, `ta.atr`, and `ta.ema`) and custom volume/price derivatives are actively utilized in the strategy's IF conditions (e.g., Squeeze breakout, Trend alignment, Volatility caps). There are no leftover MACD, ADX, or unused SMA logic instances remaining in `calc_indicators` or the backtester.
+2.  **Unused Variables & Imports**: I ran static analysis tools (`flake8`, `vulture`, and Python AST sweeps) against the code. The environment contains zero unused imports or orphan variables.
+3.  **Clean Code (Loops & DB Calls)**: The loops inside `bot.py` (like the `portfolio_guard_loop` and `sync_positions_from_db`) are highly optimized. The `read_db()` operation is lazy-loaded (only fetched once during a cache miss) and avoids any redundant database calls. No unused iterations were found.
 
-**Conclusion:** The codebase is remarkably clean and properly optimized against performance leaks and dead code.
+The codebase is exceptionally clean and well-optimized. I have compiled these details into a formal output report at `/root/hygiene_report.md`.

@@ -13,7 +13,7 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V160 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V161 Indicators...")
         import json, os
         blacklist = []
         if os.path.exists("restricted_pairs.json"):
@@ -75,6 +75,8 @@ class PortfolioBacktester:
             df_1h['vol_1h_avg_24h'] = df_1h['volume'].rolling(24, min_periods=1).mean()
             
             df_1h['altcoin_4h_return'] = (df_1h['close'] - df_1h['close'].shift(4)) / df_1h['close'].shift(4) * 100
+            df_1h['altcoin_24h_return'] = (df_1h['close'] - df_1h['close'].shift(24)) / df_1h['close'].shift(24) * 100
+            df_1h['high_1h_prev'] = df_1h['high'].shift(1)
             
             # PVE-TP & RRD-TC
             df_1h['high_1h'] = df_1h['high']
@@ -101,6 +103,8 @@ class PortfolioBacktester:
             indicators['hourly_volume'] = df_1h_idx['volume'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['vol_1h_avg_24h'] = df_1h_idx['vol_1h_avg_24h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['altcoin_4h_return'] = df_1h_idx['altcoin_4h_return'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
+            indicators['altcoin_24h_return'] = df_1h_idx['altcoin_24h_return'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
+            indicators['high_1h_prev'] = df_1h_idx['high_1h_prev'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['high_1h'] = df_1h_idx['high_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['low_1h'] = df_1h_idx['low_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
             indicators['close_1h'] = df_1h_idx['close_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
@@ -114,7 +118,7 @@ class PortfolioBacktester:
     def run(self, params):
         balance = 1000.0
         initial_balance = balance
-        active_positions = {s: {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': -99999, 'last_loss': False} for s in self.pair_data.keys()}
+        active_positions = {s: {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': -99999, 'last_loss': False, 'last_large_win_time': -99999} for s in self.pair_data.keys()}
         trades = []
         slippage_pct = params.get('SLIPPAGE_PCT', 0.0007)
         
@@ -149,6 +153,8 @@ class PortfolioBacktester:
                 'btc_4h_return': ind['btc_safe']['btc_4h_return'].values if 'btc_4h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values,
                 'btc_24h_return': ind['btc_safe']['btc_24h_return'].values if 'btc_24h_return' in ind['btc_safe'] else pd.Series(0.0, index=df.index).values,
                 'altcoin_4h_return': ind['altcoin_4h_return'].values,
+                'altcoin_24h_return': ind['altcoin_24h_return'].values,
+                'high_1h_prev': ind['high_1h_prev'].values,
                 'btc_daily_range_pct': ind['btc_safe']['btc_daily_range_pct'].values if 'btc_daily_range_pct' in ind['btc_safe'] else pd.Series(1.0, index=df.index).values,
                 'high_1h': ind['high_1h'].values,
                 'low_1h': ind['low_1h'].values,
@@ -218,7 +224,7 @@ class PortfolioBacktester:
                         pnl = ((exit_price / pos['entry_price']) - 1) * 100
                         trades.append({'pair': s, 'pnl': pnl, 'reason': global_exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': idx - pos['time']})
                         balance += pos['qty'] * exit_price * 0.999
-                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0}
+                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0, 'last_large_win_time': pos.get('last_large_win_time', -99999)}
                 continue
 
             # 3. Individual Trade Analysis
@@ -256,9 +262,9 @@ class PortfolioBacktester:
                     if hold_time_m > 24 * 60 and current_profit_pct >= 0.01:
                         pos['sl'] = max(pos['sl'], pos['entry_price'] * 1.003)
                         
-                    if hold_time_m > params.get('STALENESS_TIME_H', 24) * 60:
-                        if params.get('STALENESS_EXIT_MIN', -0.005) <= current_profit_pct <= params.get('STALENESS_EXIT_MAX', 0.005):
-                            exit_reason = "StalenessExit"
+                    if hold_time_m > 120 * 60:
+                        if pos['max_p'] < pos['entry_price'] * 1.01 and s_data['hourly_volume'][idx] < s_data['vol_1h_avg_24h'][idx]:
+                            exit_reason = "ZombieExit"
                             exit_price = price * (1.0 - slippage_pct)
 
                     if current_profit_pct >= params.get('MIN_PROFIT_TRIGGER', 0.1):
@@ -285,13 +291,15 @@ class PortfolioBacktester:
                             failed_trades_history.append(ts)
                         trades.append({'pair': s, 'pnl': pnl, 'reason': exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': idx - pos['time']})
                         balance += pos['qty'] * exit_price * 0.999
-                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0}
+                        active_positions[s] = {'qty': 0.0, 'entry_price': 0.0, 'sl': 0.0, 'max_p': 0.0, 'time': 0, 'last_close_time': idx, 'last_loss': pnl < 0, 'last_large_win_time': pos.get('last_large_win_time', -99999)}
 
                 else:
                     if circuit_breaker_until_ts and ts < circuit_breaker_until_ts:
                         continue
 
                     # Check trade cooldown period
+                    if (idx - pos.get('last_large_win_time', -99999)) < 120 and price > s_data['ema_20_1h'][idx]:
+                        continue
                     cooldown_min = params.get('COOLDOWN_PERIOD', 600) / 60.0
                     if pos.get('last_loss', False):
                         cooldown_min = params.get('LOSS_COOLDOWN_PERIOD', params.get('COOLDOWN_PERIOD', 600) * 4) / 60.0
@@ -308,6 +316,7 @@ class PortfolioBacktester:
                     
                     btc_4h_ret = s_data['btc_4h_return'][idx]
                     alt_4h_ret = s_data['altcoin_4h_return'][idx]
+                    alt_24h_ret = s_data['altcoin_24h_return'][idx]
                     is_macro_decoupled = params.get('DECOUPLE_BTC_MIN', -3.0) <= btc_4h_ret <= params.get('DECOUPLE_BTC_MAX', 1.0) and alt_4h_ret > (btc_4h_ret + params.get('DECOUPLE_ALT_RET', 3.0))
                     hourly_vol = s_data['hourly_volume'][idx]
                     avg_vol = s_data['vol_1h_avg_24h'][idx]
@@ -327,11 +336,18 @@ class PortfolioBacktester:
                     if is_high_beta and is_macro_decoupled and trend_aligned and hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:
                         setup = "Decoupled_Trend_Continuation"
 
+                    if is_macro_decoupled and trend_aligned:
+                        trend_efficiency = alt_24h_ret / max(s_data['alt_daily_range_pct'][idx], 1.0)
+                        if relative_range >= 1.6 and trend_efficiency >= 0.35:
+                            if price > s_data['high_1h_prev'][idx] and hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:
+                                setup = "Decoupled_Efficiency_Breakout"
+
                     if setup:
                         volatility = atr / price
-                        max_vol = params.get('VOLATILITY_CAP', 0.015)
+                        base_vol_cap = params.get('VOLATILITY_CAP', 0.015)
+                        dynamic_vol_cap = base_vol_cap * min(max(relative_range, 1.0), 1.75)
                         min_vol = params.get('MIN_VOLATILITY', 0.0010)
-                        if volatility > max_vol: setup = None
+                        if volatility > dynamic_vol_cap: setup = None
                         if volatility < min_vol: setup = None
 
                         if setup and balance > 10.1:
@@ -342,6 +358,7 @@ class PortfolioBacktester:
                             
                             
                             risk_pct = (params.get('BASE_RISK_PERCENT', 2.0) / 100.0) * size_strength
+                            risk_pct = min(risk_pct, 0.015)
                             btc_24h_ret_risk = s_data['btc_24h_return'][idx]
                             if btc_24h_ret_risk <= -3.0:
                                 risk_pct = risk_pct * 0.5

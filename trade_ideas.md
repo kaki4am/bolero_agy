@@ -1,83 +1,99 @@
 # Trade Data Analysis: Statistically Significant Filters & Recommendations
 
----
-
-## 1. Executive Summary & Core Metrics
-
-| Metric | Last 30 Days | All-Time (Since May 2026) | Trend / Delta |
-| :--- | :--- | :--- | :--- |
-| **Total Trades / Cycles** | 429 | 3,236 | — |
-| **Win Rate** | 43.12% | 44.84% | -1.72% (Recent dip) |
-| **Average Win / Loss** | +3.81% / -2.67% | +1.81% / -1.71% | Higher payoff ratio recently (1.43 vs 1.06) |
-| **Average Hold Time** | 33.18 hours | 22.55 hours | +10.63 hours longer |
+Based on the 3,244 all-time completed cycles and 30-day database metrics, here is the statistical evaluation and actionable filter proposals.
 
 ---
 
-## 2. Pair Exclusions (Highest Statistical Significance)
+### 1. Pair Exclusions (Statistically Significant Blacklist)
 
-Pair-level performance shows strong persistence across both sample periods. Excluding consistently negative-drift and low win-rate assets yields the highest risk-adjusted expectancy improvement.
+Filtering underperforming pairs with substantial trade samples ($N \ge 50$), persistently depressed win rates ($< 40\%$), and severe cumulative PnL drag yields the most statistically robust improvement without curve-fitting temporal noise.
 
-### Tier 1: Immediate Exclusion Candidates ($N \ge 50$, Extreme Loss & Win Rate $< 40\%$)
-* **`PEPEUSDT`**: **22.7% WR** ($N=88$), Avg PnL $-0.485\%$, **Total PnL: $-42.69$ USDT** (All-time top bleeder: $-14.23$ USDT). Severe systemic drag.
-* **`DOGEUSDT`**: **37.8% WR** ($N=98$), Avg PnL $-0.574\%$, **Total PnL: $-56.24$ USDT**. Largest aggregate dollar loss in dataset.
-* **`PENDLEUSDT`**: **33.9% WR** ($N=59$), Avg PnL $-0.684\%$, **Total PnL: $-40.35$ USDT**. High negative expectancy.
-* **`LUNCUSDT`**: **40.7% WR** ($N=59$), Avg PnL $-0.413\%$, **Total PnL: $-24.36$ USDT**. Consistent drift.
+#### **Primary Blacklist Recommendations (High Sample Size & Negative Expectancy):**
+1. **`PEPEUSDT`**
+   - **Metrics:** 88 trades | **22.7% Win Rate** | **-42.69 USDT** PnL (Avg: -0.485%)
+   - **Rationale:** Lowest win rate among actively traded pairs; severe trend slippage.
+2. **`DOGEUSDT`**
+   - **Metrics:** 98 trades | **37.8% Win Rate** | **-56.24 USDT** PnL (Avg: -0.574%)
+   - **Rationale:** Single largest cumulative PnL drain in the active trade log.
+3. **`PENDLEUSDT`**
+   - **Metrics:** 59 trades | **33.9% Win Rate** | **-40.35 USDT** PnL (Avg: -0.684%)
+   - **Rationale:** Consistently fails momentum continuation; high per-trade loss.
+4. **`AVAXUSDT`**
+   - **Metrics:** 116 trades | 45.7% Win Rate | **-51.95 USDT** PnL (Avg: -0.448%)
+   - **Rationale:** Large sample with chronic negative expectancy.
+5. **`SOLUSDT` (Severe Asymmetric Tail-Risk Exclusion)**
+   - **Metrics:** 77 trades | 64.9% Win Rate | **-25.02 USDT** recent | **-98.56 USDT All-Time Worst**
+   - **Rationale:** High win rate masked by severe left-tail blowups (average loss vastly exceeds average win). Requires exclusion or stricter position-level stop architecture.
 
-### Tier 2: Asymmetric Risk & Negative Expectancy Exclusions ($N \ge 75$)
-* **`SOLUSDT`**: **Total PnL: $-98.56$ USDT (All-Time #1 Bleeder)**. Despite a nominal $64.9\%$ win rate ($N=77$), average losses vastly overpower wins due to catastrophic left-tail risk.
-* **`AVAXUSDT`**: **45.7% WR** ($N=116$), Avg PnL $-0.448\%$, **Total PnL: $-51.95$ USDT**.
-* **`FETUSDT`**: **44.5% WR** ($N=191$), Avg PnL $-0.212\%$, **Total PnL: $-40.40$ USDT** (All-time $-11.94$ USDT).
-* **`FILUSDT`**: **45.8% WR** ($N=96$), Avg PnL $-0.253\%$, **Total PnL: $-24.24$ USDT**.
-* **`DOTUSDT`**: **45.6% WR** ($N=79$), Avg PnL $-0.281\%$, **Total PnL: $-22.22$ USDT**.
-
-### Tier 3: Low-Sample Structural Bleeders (Immediate Watch/Blacklist)
-* **`POLYXUSDT`**: Worst in 30D ($-13.65$ USDT) and All-Time ($-13.65$ USDT).
-* **`VETUSDT`**: **16.7% WR** ($N=6$), $-13.88$ USDT total (30D: $-8.87$ USDT).
-* **`CRVUSDT`**: **30.0% WR** ($N=10$), $-10.91$ USDT total.
-* **`ENSUSDT`**: **0.0% WR** ($N=5$), $-9.52$ USDT total.
-
----
-
-## 3. Hold Time Analysis
-
-| Hold Time Bucket | Trade Count | Win Rate | Average PnL | Expectancy Assessment |
-| :--- | :--- | :--- | :--- | :--- |
-| **0 – 2 hours** | 1,914 | 43.5% | -0.251% | **Net Negative Churn** (Noise & early stops) |
-| **2 – 6 hours** | 614 | 48.2% | -0.151% | Transition zone |
-| **6 – 12 hours** | 311 | **54.7%** | **+0.466%** | **Primary Alpha Zone** |
-| **12 – 24 hours** | 148 | **59.5%** | **+0.517%** | **Peak Win Rate & Edge** |
-| **24+ hours** | 139 | **57.6%** | +0.022% | Positive WR, flat payoff |
-
-### Analytical Conclusion on Hold Times:
-* **Do NOT impose short hold time limits:** Capping hold times (e.g., $<6$h or $<12$h) cuts off trades precisely where expectancy turns strongly positive ($+0.47\%$ to $+0.52\%$, WR $55\text{–}60\%$).
-* **Root Cause of 0–2h Drag:** $61\%$ of all trades ($1,914 / 3,126$) resolve within 2 hours at $-0.251\%$ average PnL, largely driven by premature stop-outs from short-term market noise. 
-* **Recommendation:** Ensure initial stop placements and entry criteria provide adequate room so positions can survive routine intra-hour volatility to reach the $6\text{–}24$h breakout window. Avoid artificial max hold-time limits (such as the previously rejected 72h hard cap).
+#### **Secondary Blacklist (Persistent Drag / Structural Flaws):**
+- **`POLYXUSDT`** (-13.65 USDT, persistent bottom-5 performer in 30D and All-Time).
+- **`VETUSDT`** (16.7% Win Rate, -13.88 USDT PnL).
+- **Confirmed Fundamental Cessations (Carryover from Learnings):**
+  - **`LSKUSDT`** (blockchain shutdown October 31, 2026).
+  - **`SAGAUSDT`** (project pivot away from crypto).
+  - **`KDAUSDT`** (project cessation).
 
 ---
 
-## 4. Time-of-Day (TOD) & Day-of-Week (DOW) Evaluation
+### 2. Hold Time Limits & Duration Analysis
 
-### Raw Descriptive Data:
-* **Low-performing hours:**
-  * Hour 22: $26.9\%$ WR ($N=78$, Avg PnL $-0.750\%$)
-  * Hour 20: $33.0\%$ WR ($N=91$, Avg PnL $-0.433\%$)
-  * Hour 13: $35.0\%$ WR ($N=177$, Avg PnL $-0.529\%$)
-  * Hour 17: $38.2\%$ WR ($N=123$, Avg PnL $-0.368\%$)
-* **DOW:** Thursday (DOW 4) leads at $55.4\%$ WR ($+0.313\%$), while Tuesday–Thursday (DOW 1–3) have negative PnL.
+| Hold Time Bucket | Completed Trades | Win Rate | Average PnL |
+| :--- | :---: | :---: | :---: |
+| **0 – 2 hours** | 1,917 (59.1%) | **43.4%** | **-0.261%** |
+| **2 – 6 hours** | 617 (19.0%) | **48.1%** | **-0.149%** |
+| **6 – 12 hours** | 312 (9.6%) | **54.5%** | **+0.450%** |
+| **12 – 24 hours** | 149 (4.6%) | **59.1%** | **+0.501%** |
+| **24+ hours** | 140 (4.3%) | **57.1%** | **-0.000%** |
 
-### Critical Rigor & Overfitting Risk:
-* **Recommendation on TOD/DOW: DO NOT IMPLEMENT BINARY ENTRY RESTRICTIONS.**
-* **Statistical Basis:** While descriptive stats show pockets of lower performance, **prior empirical tests repeatedly confirmed that TOD and DOW filters cause severe overfitting** and degrade out-of-sample forward testing. Hard temporal bans eliminate outsized trend-reversal capture and regime transitions.
+#### **Findings & Recommendation:**
+- **Win rate scales positively with hold time:** Win rates rise from **43.4% (<2h)** up to **59.1% (12–24h)**. The 30-day metrics confirm that winning trades achieve +3.97% average gain over a 36.1-hour average hold.
+- **DO NOT impose a maximum hold time cap (e.g., 24h or 72h limit):** Cutting trades by arbitrary time limits truncates the right tail (+3.0% winners: 83 trades in 30D, 293 all-time) and degrades forward expectancy.
+- **Proposed Filter:** Address the **0–2h churn bottleneck** (1,917 trades generating negative expectancy). Rather than exiting early by time, tighten minimum entry confirmation thresholds (e.g., breakout volume/ADX confirmation) to prevent whipsaw entries that get immediately stopped out within 2 hours.
 
 ---
 
-## 5. Summary of Proposed Filters
+### 3. Time-of-Day (TOD) Analysis
 
-1. **Pair Exclusions (Statistically Validated Blacklist):**
-   * **Tier 1 (High Volume Bleeders):** `PEPEUSDT`, `DOGEUSDT`, `PENDLEUSDT`, `LUNCUSDT`
-   * **Tier 2 (Negative Skew / Severe Total Drawdown):** `SOLUSDT`, `AVAXUSDT`, `FETUSDT`, `FILUSDT`, `DOTUSDT`
-   * **Tier 3 (Persistent Capital Loss):** `POLYXUSDT`, `VETUSDT`, `CRVUSDT`
-2. **Hold Time Rules:**
-   * **No artificial max hold-time cap** (preserves the $55\text{–}60\%$ WR generated in the $6\text{–}24$h holding window).
-3. **Temporal Filters (TOD / DOW):**
-   * **Reject hard TOD/DOW entry bans** to protect against sample-specific overfitting and maintain capture of large trend reversals.
+| Window (UTC) | Trades | Win Rate | Average PnL | Status |
+| :--- | :---: | :---: | :---: | :---: |
+| **Hour 22** | 78 | **26.9%** | -0.750% | Worst statistical performance |
+| **Hour 20** | 92 | **32.6%** | -0.449% | Low liquidity / US close churn |
+| **Hour 13** | 177 | **35.0%** | -0.529% | Pre-US equity open volatility |
+| **Hour 17** | 124 | **37.9%** | -0.390% | London fix / chop |
+| **Hours 01–04, 12, 14–15** | 1,044 | **50.3% – 56.2%** | Positive/Flat | Highest expectancy periods |
+
+#### **Statistical Evaluation & Precaution:**
+- **Overfitting Alert:** While hours 13, 17, 20, and 22 display poor raw historical metrics, previous forward tests confirmed that **hard binary TOD exclusion filters severely degraded out-of-sample performance** by missing major trend-reversal entries.
+- **Proposed Filter:** **REJECT hard binary hour blocks.** If temporal risk control is desired, use **soft sizing modulation only** (e.g., reduce position risk multiplier to 0.7x during hours 20:00–22:59 UTC) rather than completely disallowing entries.
+
+---
+
+### 4. Day-of-Week (DOW) Analysis
+
+| Day of Week | Trades | Win Rate | Average PnL |
+| :--- | :---: | :---: | :---: |
+| **Sunday (0)** | 455 | 45.5% | -0.006% |
+| **Monday (1)** | 823 | 45.3% | -0.258% |
+| **Tuesday (2)** | 323 | 45.2% | -0.324% |
+| **Wednesday (3)** | 497 | 44.3% | -0.361% |
+| **Thursday (4 / Fri UTC)** | 434 | **55.3%** | **+0.305%** |
+| **Friday (5 / Sat UTC)** | 259 | 46.7% | +0.087% |
+| **Saturday (6 / Sun UTC)** | 344 | 46.5% | -0.097% |
+
+#### **Findings & Recommendation:**
+- Mid-week days (Tue–Thu) hover consistently around 44.3%–45.3% win rates with small negative averages, while Fridays outperform at 55.3%.
+- **Proposed Filter:** **REJECT Day-of-Week entry restrictions.** DOW anomalies in crypto show high regime drift; previous validation runs proved DOW filters overfit historical sampling and fail forward testing.
+
+---
+
+### Summary of Proposed Filter Rules
+
+1. **Active Pair Exclusions (Immediate Win Rate & PnL Boost):**
+   - Blacklist: `PEPEUSDT`, `DOGEUSDT`, `PENDLEUSDT`, `AVAXUSDT`, `POLYXUSDT`.
+   - Structural risk exclusion: `SOLUSDT` (due to asymmetric tail loss ratio).
+   - Maintain fundamental blacklists: `LSKUSDT`, `SAGAUSDT`, `KDAUSDT`.
+2. **Hold Time Policy:**
+   - **No maximum hold time cap.** Preserve 12h–36h holds where win rate peaks (57%–59%).
+3. **Temporal Policy (TOD / DOW):**
+   - **No hard binary exclusions** for hours or days of week (avoids known out-of-sample forward testing degradation).
+   - Optional: Soft risk dampener (0.7x size) during the low-liquidity US-close window (20:00–22:59 UTC).

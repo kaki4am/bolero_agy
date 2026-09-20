@@ -43,12 +43,13 @@ class TradingBot:
         self.last_trade_time = {} # pair: timestamp
         self.last_dust_time = 0 # Track dust conversion frequency
         self.last_positions_save = 0 # Throttle position saves
-        self._pair_last_loss = {} # Per-pair loss tracking for adaptive cooldown
+        self._pair_last_loss = {}
+        self._pair_last_large_win_time = {} # Per-pair loss tracking for adaptive cooldown
         self.failed_trades_history = []
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V160 - Volatile Momentum & Decoupling Squeeze
+        # Strategy V161 - Volatile Momentum & Decoupling Squeeze
         self.config = {}
         self.base_config = self.config.copy()
         self.load_config()
@@ -355,7 +356,7 @@ class TradingBot:
                 'btc_4h_return': btc_ret_4h,
                 'btc_24h_return': btc_ret_24h
             }
-            print("--- Market Status Update (Strategy V160 - Volatile Momentum & Decoupling Squeeze) ---")
+            print("--- Market Status Update (Strategy V161 - Volatile Momentum & Decoupling Squeeze) ---")
             print(f"BTC 4h Return: {btc_ret_4h:+.2f}% | 24h: {btc_ret_24h:+.2f}%")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -381,6 +382,16 @@ class TradingBot:
                             cache_data.update({'altcoin_4h_return': (close_1h.iloc[-1] - close_1h.iloc[-5]) / close_1h.iloc[-5] * 100})
                         else:
                             cache_data.update({'altcoin_4h_return': 0.0})
+                            
+                        if len(close_1h) >= 25:
+                            cache_data.update({'altcoin_24h_return': (close_1h.iloc[-1] - close_1h.iloc[-25]) / close_1h.iloc[-25] * 100})
+                        else:
+                            cache_data.update({'altcoin_24h_return': 0.0})
+                            
+                        if len(high_1h) >= 2:
+                            cache_data.update({'high_1h_prev': high_1h.iloc[-2]})
+                        else:
+                            cache_data.update({'high_1h_prev': high_1h.iloc[-1]})
                             
                         cache_data.update({'high_1h': high_1h.iloc[-1], 'low_1h': low_1h.iloc[-1], 'close_1h': close_1h.iloc[-1]})
                         
@@ -576,9 +587,10 @@ class TradingBot:
                         sl = max(sl, pos['entry_price'] * 1.003)
                         self.positions[pair]['sl'] = sl
                         
-                    if hold_seconds > self.config.get('STALENESS_TIME_H', 24) * 3600:
-                        if self.config.get('STALENESS_EXIT_MIN', -0.005) <= profit_pct <= self.config.get('STALENESS_EXIT_MAX', 0.005):
-                            exit_reason = 'StalenessExit'
+                    if hold_seconds > 120 * 3600:
+                        tmp_ema = self.ema_cache.get(pair, {})
+                        if pos.get('max_p', 0) < pos['entry_price'] * 1.01 and tmp_ema.get('hourly_volume', 0.0) < tmp_ema.get('vol_1h_avg_24h', 1.0):
+                            exit_reason = 'ZombieExit'
 
                     in_profit = profit_pct >= self.config.get('MIN_PROFIT_TRIGGER', 0.10)
                     
@@ -730,6 +742,11 @@ class TradingBot:
             pair_had_loss = self._pair_last_loss.get(pair, False)
             cooldown = base_cooldown if not pair_had_loss else self.config.get('LOSS_COOLDOWN_PERIOD', base_cooldown * 4)
             if (time.time() - self.last_trade_time.get(pair, 0)) < cooldown: return
+            
+            last_win = self._pair_last_large_win_time.get(pair, 0)
+            ema_20_1h = ema_data.get('ema_20_1h', 0.0)
+            if (time.time() - last_win) < 7200 and cp > ema_20_1h:
+                return
             active_count = len([p for p in self.positions if self.positions[p]['entries'] > 0])
             
             max_concurrent = self.config.get('MAX_PAIRS', 40) // 4
@@ -742,6 +759,8 @@ class TradingBot:
             
             btc_4h_ret = self.market_trend.get('btc_4h_return', 0.0)
             alt_4h_ret = ema_data.get('altcoin_4h_return', 0.0)
+            alt_24h_ret = ema_data.get('altcoin_24h_return', 0.0)
+            high_1h_prev = ema_data.get('high_1h_prev', cp)
             
             is_macro_decoupled = self.config.get('DECOUPLE_BTC_MIN', -3.0) <= btc_4h_ret <= self.config.get('DECOUPLE_BTC_MAX', 1.0) and alt_4h_ret > (btc_4h_ret + self.config.get('DECOUPLE_ALT_RET', 3.0))
             
@@ -763,10 +782,17 @@ class TradingBot:
             if is_high_beta_decoupler and is_macro_decoupled and trend_aligned and volume_confirmed:
                 setup = "Decoupled_Trend_Continuation"
 
+            if is_macro_decoupled and trend_aligned:
+                trend_efficiency = alt_24h_ret / max(alt_daily_range_pct, 1.0)
+                if relative_range >= 1.6 and trend_efficiency >= 0.35:
+                    if cp > high_1h_prev and volume_confirmed:
+                        setup = "Decoupled_Efficiency_Breakout"
+
             if setup:
                 volatility = atr / cp
-                mx_v = self.config.get('VOLATILITY_CAP', 0.015)
-                if volatility > mx_v or volatility < self.config.get('MIN_VOLATILITY', 0.001): return
+                base_cap = self.config.get('VOLATILITY_CAP', 0.015)
+                dynamic_cap = base_cap * min(max(relative_range, 1.0), 1.75)
+                if volatility > dynamic_cap or volatility < self.config.get('MIN_VOLATILITY', 0.001): return
                 
                 # Dynamic portfolio strength scaling
                 size_strength = 1.0
@@ -807,6 +833,7 @@ class TradingBot:
                     total_eq = getattr(self, 'last_total_equity', 1000.0)
                 if side == 'BUY':
                     risk_pct = (self.config['BASE_RISK_PERCENT'] / 100.0) * strength
+                    risk_pct = min(risk_pct, 0.015)
                     if hasattr(self, 'market_trend'):
                         btc_24h_ret_risk = self.market_trend.get('btc_24h_return', 0.0)
                         if btc_24h_ret_risk <= -3.0:
@@ -886,6 +913,8 @@ class TradingBot:
                     # Track if this was a winning or losing trade for adaptive cooldown (per-pair)
                     entry_price = self.positions[pair].get('entry_price', ep)
                     self._pair_last_loss[pair] = (ep < entry_price)
+                    if ep > entry_price * 1.05:
+                        self._pair_last_large_win_time[pair] = time.time()
                     if ep < entry_price:
                         self.failed_trades_history.append(time.time())
                         # clean up old ones
