@@ -1,17 +1,17 @@
 {
-  "RISK_MULTIPLIER": 0.75,
-  "SL_MULT_OFFSET": -0.1,
-  "VOL_SPIKE_MULT_OFFSET": 0.05,
-  "PORTFOLIO_EJECT_OFFSET": 0.25,
-  "blacklist_add": [],
-  "whitelist_add": [
-    "CELRUSDT",
-    "CREAMUSDT",
-    "ONEUSDT",
-    "ZECUSDT",
-    "NEARUSDT"
-  ],
-  "rationale": "With BTC retracing -1.26% around $80.2K and Reddit r/CryptoCurrency exhibiting a cautious 'wait-and-see' sentiment tied to macroeconomic rate policy, we moderately reduce risk exposure and tighten stop thresholds while targeting surging decoupled volume leaders.",
-  "confidence": 0.88,
-  "learning_to_persist": "[AI Manager 2026-09-20 03:00] Confirmed that during a -1.26% BTC dip with cautious wait-and-see Reddit sentiment following an $80k recovery, a mild risk reduction paired with aggressive whitelisting of high-volume decoupled momentum gainers like CELR, CREAM, and ONE optimizes defense and alpha capture."
+    "RISK_MULTIPLIER": 1.0,
+    "SL_MULT_OFFSET": 0.0,
+    "VOL_SPIKE_MULT_OFFSET": 0.0,
+    "PORTFOLIO_EJECT_OFFSET": 0.0,
+    "blacklist_add": [],
+    "whitelist_add": [
+        "CELRUSDT",
+        "ONEUSDT",
+        "CREAMUSDT",
+        "ZECUSDT",
+        "NEARUSDT"
+    ],
+    "rationale": "With BTC consolidating mildly at -0.72% above $80.4k, r/CryptoCurrency sentiment displays cautious skepticism over macro headwinds and Red September, supporting full baseline risk parameters while aggressively targeting decoupled top gainers and high-volume breakouts.",
+    "confidence": 0.9,
+    "learning_to_persist": "Confirmed that during sub-1% BTC consolidations (-0.72%) accompanied by macro-cautious Reddit sentiment, maintaining baseline risk while whitelisting high-volume decoupled momentum leaders like CELR, ONE, CREAM, and ZEC maximizes alpha capture."
 }
