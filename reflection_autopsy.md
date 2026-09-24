@@ -1,4 +1,4 @@
-# Nightly Strategic Reflection (2026-09-24 14:03:29)
+# Nightly Strategic Reflection (2026-09-24 14:44:55)
 
 **Recommended Stance:** `CAPITAL_PRESERVATION`  
 **Posture:** Bot is in drawdown. Tighten entry filters, cap risk to 15%, restrict chronic bleeders, and focus on high-expectancy trend setups.

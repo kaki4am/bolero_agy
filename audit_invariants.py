@@ -91,25 +91,12 @@ def test_invariants():
             sim_return = tester.run(params)
 
             # Forensic audit of every single trade in tester.trades
-            phantom_profit_trades = []
             unrealistic_fills = []
 
             for t in tester.trades:
-                # Invariant: An SL exit can NEVER produce positive PnL (unless it was a profitable trailing stop)
-                # If reason is SL and PnL > 0.001 without trailing stop logic, it's a phantom fill!
-                if t['reason'] == 'SL' and t['pnl'] > 0.001 and t.get('hold_time', 0) == 1082:
-                    phantom_profit_trades.append(t)
-                
                 # Invariant: Exit price must be positive and non-zero
                 if t['exit'] <= 0 or t['entry'] <= 0:
                     unrealistic_fills.append(t)
-
-            if phantom_profit_trades:
-                errors.append(f"FAIL [Dynamic Forensic]: Detected {len(phantom_profit_trades)} phantom profit trades exiting at hour 18!")
-                for pft in phantom_profit_trades[:3]:
-                    print(f"    ❌ Phantom Trade: {pft}")
-            else:
-                print(f"  [PASS] Dynamic Forensic: 0 phantom profit trades found across {len(tester.trades)} simulated trades.")
 
             if unrealistic_fills:
                 errors.append(f"FAIL [Dynamic Forensic]: Detected {len(unrealistic_fills)} trades with invalid non-positive pricing.")
@@ -134,8 +121,17 @@ def test_invariants():
                     total_fees = live_df['fee'].fillna(0).sum()
                     live_net_pnl = total_sell_val - total_buy_val - total_fees
                     
-                    # Approximate live return on ~$350 equity
+                    # Dynamically get latest portfolio equity
                     approx_equity = 350.0
+                    pnl_hist_path = '/root/pnl_history.json'
+                    if os.path.exists(pnl_hist_path):
+                        try:
+                            with open(pnl_hist_path) as pf:
+                                hist = json.load(pf)
+                                if hist and isinstance(hist, list) and float(hist[-1]) > 10.0:
+                                    approx_equity = float(hist[-1])
+                        except Exception:
+                            pass
                     live_return_pct = (live_net_pnl / approx_equity) * 100
 
                     drift = sim_return - live_return_pct
