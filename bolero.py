@@ -6,6 +6,7 @@ def main():
     term = Terminal()
     options = [
         "📈 Live Trading Bot (trades, entries, exits)",
+        "🎯 Active Positions (Exact Entries & Price Variations)",
         "⚙️ Tuner Grid Search (runs continuously, optimizes params)",
         "🤖 AI Risk Manager (hourly tactical adjustments)",
         "🧬 Nightly AI Committee (Strategy, Trade, & Price Research)",
@@ -14,6 +15,7 @@ def main():
         "❌ Exit"
     ]
     selected_idx = 0
+    exit_idx = len(options) - 1
 
     with term.fullscreen(), term.cbreak(), term.hidden_cursor():
         while True:
@@ -45,7 +47,7 @@ def main():
             elif key.code == term.KEY_DOWN:
                 selected_idx = (selected_idx + 1) % len(options)
             elif key.code == term.KEY_ENTER or key == '\n' or key == '\r':
-                if selected_idx == 6:  # Exit option
+                if selected_idx == exit_idx:  # Exit option
                     break
                 
                 print(term.clear)
@@ -54,9 +56,12 @@ def main():
                         # Live Trading Bot dashboard
                         subprocess.run(["/root/venv/bin/python", "/root/dashboard.py"])
                     elif selected_idx == 1:
+                        # Active Positions Monitor
+                        subprocess.run(["/root/venv/bin/python", "/root/positions_dashboard.py"])
+                    elif selected_idx == 2:
                         # Tuner grid search dashboard
                         subprocess.run(["/root/venv/bin/python", "/root/backtest_dashboard.py"])
-                    elif selected_idx == 2:
+                    elif selected_idx == 3:
                         # AI Risk Manager logs (hourly)
                         log_path = "/root/ai_manager.log"
                         if os.path.exists(log_path):
@@ -64,7 +69,7 @@ def main():
                         else:
                             print(term.bold_red("AI Manager log not found. Runs hourly via cron."))
                             term.inkey(timeout=3)
-                    elif selected_idx == 3:
+                    elif selected_idx == 4:
                         # Nightly AI Committee logs
                         log_path = "/root/strategy_evolver.log"
                         if os.path.exists(log_path):
@@ -72,10 +77,10 @@ def main():
                         else:
                             print(term.bold_red("Committee log not found."))
                             term.inkey(timeout=3)
-                    elif selected_idx == 4:
+                    elif selected_idx == 5:
                         # View blacklist
                         subprocess.run(["/root/venv/bin/python", "/root/view_blacklist.py"])
-                    elif selected_idx == 5:
+                    elif selected_idx == 6:
                         # Forecast View
                         subprocess.run(["/root/venv/bin/python", "/root/forecast_dashboard.py"])
                 except Exception as e:

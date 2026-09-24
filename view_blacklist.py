@@ -46,15 +46,20 @@ def main():
         
     print(term.bold_green("  [ Active Positions ]"))
     if active:
-        from datetime import datetime
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
         for pair, data in active.items():
             entry_price = data.get('entry_price', 'Unknown')
             t_val = data.get('time', 'Unknown')
             if isinstance(t_val, (int, float)):
-                t_str = datetime.fromtimestamp(t_val).strftime('%Y-%m-%d %H:%M:%S')
+                dt = datetime.fromtimestamp(t_val, tz=timezone.utc)
+                t_str = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+                diff_s = max(0, int((now_utc - dt).total_seconds()))
+                h_str = f"({diff_s // 3600}h {(diff_s % 3600) // 60:02d}m ago)"
             else:
                 t_str = str(t_val)
-            print(f"    {term.bold(pair)}: Entry @ {entry_price} (Time: {t_str})")
+                h_str = ""
+            print(f"    {term.bold(pair)}: Entry @ {entry_price} (Entered: {t_str} {h_str})")
     else:
         print("    No active positions.")
         

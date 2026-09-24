@@ -30,6 +30,7 @@ WHITELIST = {
     'bolero.py',
     'view_blacklist.py',
     'forecast_dashboard.py',
+    'positions_dashboard.py',
     
     # Core tests
     'test_backtest.py',
@@ -48,6 +49,7 @@ WHITELIST = {
     '.bash_history',
     'GEMINI.md',
     'research_notes.md',
+    'rejected_ideas.md',
     'verify.log',
     'strategy_evolver.log',
     'daily_opinion.html',
