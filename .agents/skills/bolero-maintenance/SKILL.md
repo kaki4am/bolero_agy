@@ -7,7 +7,7 @@ metadata:
 
 # Bolero Trading Bot Operational Runbook & Maintenance Skill
 
-This skill provides the standard operating procedures, architectural invariants, and diagnostic runbooks for the autonomous Binance spot trading bot (Strategy V160).
+This skill provides the standard operating procedures, architectural invariants, diagnostic runbooks, and autonomous multi-agent adversarial audit workflows for the autonomous Binance spot trading bot (Strategy V160).
 
 ---
 
@@ -158,3 +158,46 @@ Validates:
 - **Symptom:** Bot reports tracking max positions (e.g. 5/5) but account equity is mostly idle in USDT; positions contain negligible amounts.
 - **Root Cause:** Small residual balances left over from previous trades (< $1.00) being counted as active trades.
 - **Remedy:** Confirm the `$4.00` minimum notional filter is present in `bot.py`'s position sync logic.
+
+---
+
+## 5. Adversarial Multi-Agent Audit Runbook (/goal Mode)
+
+Going forward, this skill is designed to autonomously review the entire codebase and identify architectural vulnerabilities, execution leaks, and quant simulation drift by spawning **three specialized adversarial subagents** in `/goal` mode.
+
+### 1. The Adversarial Squad Architecture
+
+When triggered, the coordinator agent invokes three concurrent adversarial subagents:
+
+1. **`adversarial_invariant_auditor` (Invariant & Physics Exploiter):**
+   * **Domain:** [`portfolio_backtester.py`](file:///root/portfolio_backtester.py), [`tuner.py`](file:///root/tuner.py), [`audit_invariants.py`](file:///root/audit_invariants.py), [`run_quick_validation.py`](file:///root/run_quick_validation.py).
+   * **Attack Targets:** Lookahead bias (e.g. `.bfill()` on hourly indicators), round-trip fee undercounting (ignoring 0.20% fees in trade PnL), optimistic stop-loss fills during gap-downs, and Optuna objective gaming (favoring 0-trade or extreme-tail-risk parameter spaces).
+
+2. **`adversarial_execution_auditor` (Live Execution & Risk Breaker):**
+   * **Domain:** [`bot.py`](file:///root/bot.py), [`trading_utils.py`](file:///root/trading_utils.py), [`config.json`](file:///root/config.json).
+   * **Attack Targets:** Binance API edge cases (misclassifying `-2010` insufficient balance as symbol restrictions), partial fills abandoning remaining inventory, infinite sell loops on `-1013` filter rejects, 24h WebSocket drop terminations, and circuit breaker bypasses when all positions close.
+
+3. **`adversarial_governance_auditor` (Governance & Concurrency Saboteur):**
+   * **Domain:** [`nightly_committee.sh`](file:///root/nightly_committee.sh), [`reflect.py`](file:///root/reflect.py), [`ai_manager.py`](file:///root/ai_manager.py), [`system_health.py`](file:///root/system_health.py), SQLite DB and JSON configs.
+   * **Attack Targets:** Non-atomic config writes (`config.json` read/write race conditions causing `JSONDecodeError`), SQLite lock contention (`database is locked`), AI Manager hallucinated symbol bypasses (`test_symbol_permission` returning True), omission of pre-flight invariant gates in nightly committee, and fee asset conversion blindspots (BNB fees vs USDT).
+
+---
+
+### 2. Master Adversarial Audit Findings & Remediation Backlog
+
+The following backlog was uncovered by the initial adversarial audit run and represents the active hardening targets:
+
+| Priority | Area | Issue & Vulnerability | Affected Files & Lines | Actionable Remediation |
+| :---: | :--- | :--- | :--- | :--- |
+| **P0** | **Live Bot** | `self.market_trend` dict overwrite wipes `btc_daily_range_pct`, causing `relative_range` to always default to 1.0 in live trading and falsely triggering altcoin decoupling beta on every coin. | [`bot.py:405-410`](file:///root/bot.py#L405-L410) | Replace reassignment with `self.market_trend.update({...})` to preserve 24h range metrics. |
+| **P0** | **Live Bot** | Circuit breaker bypassed on position closure: `check_portfolio_guard()` returns early if `not active`, failing to record equity or calculate drawdown when positions hit stop loss. | [`bot.py:687-722`](file:///root/bot.py#L687-L722) | Remove `if not active: return` before equity logging; calculate drawdown from peak-to-trough over the 1-hour window. |
+| **P0** | **Live Bot** | Binance error `-2010` (insufficient balance) caught under symbol ban filter, permanently blacklisting valid pairs in `restricted_pairs.json` and wiping sell tracking. | [`bot.py:971-978`](file:///root/bot.py#L971-L978) | Decouple `-2010` from symbol restriction blacklist; retain position tracking on failed sell. |
+| **P0** | **Governance** | `nightly_committee.sh` Phase 4 never runs [`audit_invariants.py`](file:///root/audit_invariants.py), allowing unverified or illegal parameter/physics changes to deploy without invariant verification. | [`nightly_committee.sh:296-335`](file:///root/nightly_committee.sh#L296-L335) | Insert `/root/venv/bin/python /root/audit_invariants.py` into verification gate alongside `verify_system.py`. |
+| **P0** | **Reflection** | Fee currency blindness: treats BNB fees (e.g. 0.0003 BNB) as USD value ($0.0003), undercounting real fee drag by ~600x. | [`reflect.py:40,74`](file:///root/reflect.py#L40) | Convert non-USDT fees to USD value using current token/BNB price. |
+| **P1** | **Backtest** | Lookahead bias in `portfolio_backtester.py`: `.bfill()` on resampled 1h indicators backpropagates future 50h EMA and ATR into the first 250 minutes. | [`portfolio_backtester.py:99-110`](file:///root/portfolio_backtester.py#L99-L110) | Remove all `.bfill()` calls; require a 50-hour warmup before entries. |
+| **P1** | **Backtest** | Trade `pnl` ignores 0.20% round-trip Binance fees, misclassifying fee-loss churn as wins and preventing circuit breaker trips in backtests. | [`portfolio_backtester.py:285-290`](file:///root/portfolio_backtester.py#L285-L290), [`388`](file:///root/portfolio_backtester.py#L388) | Compute net PnL after round-trip fees; harmonize EOD fee to 0.10%. |
+| **P1** | **Live Bot** | Partial fills on SELL unconditionally reset `entries: 0, qty: 0.0`, abandoning remaining unsold assets without stop protection. | [`bot.py:909-952`](file:///root/bot.py#L909-L952) | Deduct executed quantity from `pos['qty']` on partial fills and retain position monitoring. |
+| **P1** | **Live Bot** | `test_symbol_permission()` returns `True` on `-1121 Invalid symbol`, allowing LLM hallucinations in `whitelist_add` to infiltrate `tracked_pairs.json`. | [`bot.py:363-375`](file:///root/bot.py#L363-L375) | Enforce strict validation: return `False` on any exception from `create_test_order` unless error is explicitly insufficient balance. |
+| **P1** | **Concurrency** | Non-atomic write to `config.json` in `tuner.py` and `reflect.py` causes `JSONDecodeError` during periodic reload in `bot.py`. | [`tuner.py:47`](file:///root/tuner.py#L47), [`reflect.py:293`](file:///root/reflect.py#L293) | Standardize all JSON config writes with PID-scoped atomic file replacements (`atomic_json_dump`). |
+| **P2** | **Optimizer** | Optuna objective in `tuner.py` rewards low trade counts (e.g. 1 lucky trade) and tight TP + 8x ATR stops (high win rate with severe tail risk). | [`tuner.py:279-327`](file:///root/tuner.py#L279-L327) | Implement Calmar/Sortino ratio objective with minimum trade count threshold ($N \ge 20$). |
+| **P2** | **Auditor** | Naive 5-day drift window in `audit_invariants.py` causes boundary distortion (counting open buys as 100% losses). | [`audit_invariants.py:118-135`](file:///root/audit_invariants.py#L118-L135) | Integrate FIFO trade matching from `reflect.py` for live vs simulation drift auditing. |
