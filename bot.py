@@ -64,7 +64,22 @@ class TradingBot:
             self.config.update(self.base_config)
             
             overrides_path = 'tactical_overrides.json'
+            # TTL: the AI Manager runs hourly, so overrides should be refreshed each hour.
+            # If the file is older than TACTICAL_OVERRIDES_TTL_SEC (default 90 min = one missed
+            # cycle of grace), treat it as stale and revert to neutral baseline risk rather than
+            # applying an outdated posture/whitelist indefinitely (e.g. when ai_manager is skipped
+            # due to the credit gate).
+            ttl_sec = self.base_config.get('TACTICAL_OVERRIDES_TTL_SEC', 5400)
+            overrides_fresh = False
             if os.path.exists(overrides_path):
+                try:
+                    age_sec = time.time() - os.path.getmtime(overrides_path)
+                    overrides_fresh = age_sec <= ttl_sec
+                    if not overrides_fresh:
+                        print(f"Ignoring tactical_overrides.json: stale ({int(age_sec)}s old > {ttl_sec}s TTL). Using neutral baseline.")
+                except Exception as ae:
+                    print(f"Could not determine tactical_overrides age: {ae}")
+            if os.path.exists(overrides_path) and overrides_fresh:
                 try:
                     with open(overrides_path, 'r') as f:
                         overrides = json.load(f)
@@ -78,7 +93,7 @@ class TradingBot:
                 except Exception as oe:
                     print(f"Error loading tactical overrides: {oe}")
             else:
-                print("Loaded configuration from config.json (No overrides active)")
+                print("Loaded configuration from config.json (No fresh overrides active)")
         except Exception as e:
             print(f"Error loading config.json: {e}")
 
@@ -152,19 +167,30 @@ class TradingBot:
         print(f"Current USDT Balance: {usdt_free} | Initialized Total Portfolio Equity: {self.last_total_equity}")
         usdt_pairs = [t for t in tickers if t['symbol'].endswith('USDT')]
         
-        blacklisted = ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'EURUSDT', 'USDTUSDT', 'BUSDUSDT', 'DAIUSDT', 
-                       'AVAXUSDT', 'PEPEUSDT', 'DOGEUSDT', 'PENDLEUSDT', 'LUNCUSDT', 'VETUSDT', 'LAPTOPUSDT', 'REZUSDT', 'ANIMEUSDT', 'SAGAUSDT', 'SOLUSDT', 'POLYXUSDT',
-                       'FETUSDT', 'INJUSDT', 'NEARUSDT', 'DOTUSDT', 'FILUSDT', 'LDOUSDT', 'XECUSDT', 'SHIBUSDT', 'DODOUSDT',
-                       'WLDUSDT', 'ADAUSDT', 'LINKUSDT', 'XRPUSDT', 'LTCUSDT',
-                       'HFTUSDT', 'PEOPLEUSDT', 'ONGUSDT', 'SYNUSDT', 'COTIUSDT', 'CRVUSDT',
-                       'ENSUSDT', 'DEXEUSDT', 'HEIUSDT',
-                       'XAUTUSDT', 'QQQBUSDT', 'MITOUSDT', 'MARSCOINUSDT']
+        # Non-tradeable pairs (stablecoins, fiat, tokenized-equity products) come from
+        # config.json ("EXCLUDED_PAIRS"). Fallback keeps the bot safe if the key is missing.
+        blacklisted = self.config.get('EXCLUDED_PAIRS', [
+            'USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'EURUSDT', 'USDTUSDT', 'BUSDUSDT', 'DAIUSDT',
+            'XAUTUSDT', 'QQQBUSDT'
+        ])
         candidates = []
+        min_vol = self.config.get('MIN_VOLATILITY', 0.002)
         for p in usdt_pairs:
             symbol = p['symbol']
             if symbol in blacklisted or symbol in self.restricted_pairs: continue
             if any(symbol.endswith(sfx) for sfx in ['UPUSDT', 'DOWNUSDT', 'BEARUSDT', 'BULLUSDT']): continue
             if symbol in self.exchange_info and not self.exchange_info[symbol]['isAllowed']: continue
+            # Automatic volatility filter: drop non-volatile pairs (e.g. stablecoin/fiat pairs
+            # like USDCUSDT, DAIUSDT) by principle rather than by a manual blacklist. Uses the
+            # 24h high/low range as a cheap proxy from data already in the ticker.
+            try:
+                hi = float(p.get('highPrice', 0))
+                lo = float(p.get('lowPrice', 0))
+                last = float(p.get('lastPrice', 0)) or hi
+                if last > 0 and ((hi - lo) / last) < min_vol:
+                    continue
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
             candidates.append(p)
 
         sorted_candidates = sorted(candidates, key=lambda x: float(x['quoteVolume']), reverse=True)
@@ -185,11 +211,33 @@ class TradingBot:
         # Check tactical_overrides.json for AI Manager whitelisting (social sentiment / news hypes)
         try:
             overrides_path = 'tactical_overrides.json'
-            if os.path.exists(overrides_path):
+            ttl_sec = self.base_config.get('TACTICAL_OVERRIDES_TTL_SEC', 5400)
+            overrides_fresh = os.path.exists(overrides_path) and (time.time() - os.path.getmtime(overrides_path)) <= ttl_sec
+            if os.path.exists(overrides_path) and not overrides_fresh:
+                print("Ignoring stale tactical_overrides.json whitelist (past TTL).")
+            if overrides_fresh:
                 with open(overrides_path, 'r') as f:
                     overrides = json.load(f)
+                # Build a 24h volatility lookup so whitelist pairs face the same filter as candidates.
+                vol_by_symbol = {}
+                for p in usdt_pairs:
+                    try:
+                        hi = float(p.get('highPrice', 0)); lo = float(p.get('lowPrice', 0))
+                        last = float(p.get('lastPrice', 0)) or hi
+                        if last > 0:
+                            vol_by_symbol[p['symbol']] = (hi - lo) / last
+                    except (TypeError, ValueError, ZeroDivisionError):
+                        pass
                 whitelist = overrides.get('whitelist_add', [])
                 for pair in whitelist:
+                    # Exclusions take priority over the whitelist: never re-add a pair that is
+                    # blacklisted, learned-restricted, or below the strategy's volatility floor.
+                    if pair in blacklisted or pair in self.restricted_pairs:
+                        print(f"Ignoring whitelist pair {pair}: excluded (blacklist/restricted).")
+                        continue
+                    if vol_by_symbol.get(pair, 1.0) < min_vol:
+                        print(f"Ignoring whitelist pair {pair}: below MIN_VOLATILITY.")
+                        continue
                     if pair not in valid_pairs and await self.test_symbol_permission(pair):
                         print(f"Force tracking AI Manager whitelist pair: {pair}")
                         valid_pairs.append(pair)
@@ -256,8 +304,13 @@ class TradingBot:
                             added_any = True
                             print(f"Tactically blacklisted by AI Manager: {pair}")
                     
-                    # Dynamically spawn websockets for new whitelisted pairs
-                    whitelist = overrides.get('whitelist_add', [])
+                    # Dynamically spawn websockets for new whitelisted pairs.
+                    # Only honor the whitelist while overrides are fresh (within TTL); a stale
+                    # whitelist must not keep force-tracking outdated hyped pairs. (Blacklist_add
+                    # above is left unguarded since dropping pairs is always the conservative action.)
+                    ttl_sec = self.base_config.get('TACTICAL_OVERRIDES_TTL_SEC', 5400)
+                    whitelist_fresh = (time.time() - os.path.getmtime(overrides_path)) <= ttl_sec
+                    whitelist = overrides.get('whitelist_add', []) if whitelist_fresh else []
                     for pair in whitelist:
                         if pair not in self.tracked_pairs and pair not in self.restricted_pairs:
                             if await self.test_symbol_permission(pair):
@@ -568,8 +621,8 @@ class TradingBot:
 
                     exit_reason = None
                     
-                    if hold_seconds > self.config.get('PROFIT_LOCK_TIME_H', 18) * 3600:
-                        profit_lock = pos['entry_price'] * (1.0 + self.config.get('PROFIT_LOCK_PCT', 0.0025))
+                    if hold_seconds > self.config.get('PROFIT_LOCK_TIME_H', 18) * 3600 and profit_pct >= self.config.get('PROFIT_LOCK_PCT', 0.005):
+                        profit_lock = pos['entry_price'] * (1.0 + self.config.get('PROFIT_LOCK_PCT', 0.005))
                         sl = max(sl, profit_lock)
                         self.positions[pair]['sl'] = sl
                     if hold_seconds > 24 * 3600 and profit_pct >= 0.01:
@@ -582,12 +635,9 @@ class TradingBot:
 
                     in_profit = profit_pct >= self.config.get('MIN_PROFIT_TRIGGER', 0.10)
                     
-                    df_pair = self.data_1m.get(pair)
                     bb_upper_cp = cp * 1.1
-                    if df_pair is not None and len(df_pair) >= 20:
-                        bb = ta.bbands(df_pair['close'], length=20, std=2.0)
-                        if bb is not None and not bb.empty:
-                            bb_upper_cp = bb['BBU_20_2.0_2.0'].iloc[-1]
+                    if hasattr(self, 'current_indicators') and pair in self.current_indicators:
+                        bb_upper_cp = self.current_indicators[pair].get('bb_upper', cp * 1.1)
                             
                     price_stretched = cp >= bb_upper_cp * self.config.get('BB_EXTENSION_PCT', 1.02)
                     

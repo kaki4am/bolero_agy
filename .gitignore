@@ -34,9 +34,15 @@ db_stats_summary.txt
 .npm/
 .ssh/
 .config/
+.cache/
+.lesshst
+.zcompdump*
+.zshrc
 .profile
 .bashrc
 install_temp/
+scratch/
+duck.html
 
 # Backups
 backups/

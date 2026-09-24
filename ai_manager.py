@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import urllib.request
 import xml.etree.ElementTree as ET
 import subprocess
@@ -8,6 +9,18 @@ from binance import Client
 from dotenv import load_dotenv
 
 load_dotenv()
+
+def sanitize_external_text(text, max_len=200):
+    """Neutralize untrusted feed text before it enters the LLM prompt.
+    Strips control chars, code fences, and collapses whitespace; caps length.
+    External feed content must be treated as DATA, never as instructions."""
+    if not text:
+        return ""
+    text = str(text)
+    text = text.replace("`", "'")                       # kill code fences
+    text = re.sub(r'[\x00-\x1f\x7f]', ' ', text)          # strip control chars
+    text = re.sub(r'\s+', ' ', text).strip()              # collapse whitespace
+    return text[:max_len]
 
 def get_news_headlines():
     headlines = []
@@ -18,8 +31,9 @@ def get_news_headlines():
             xml_data = r.read()
         root = ET.fromstring(xml_data)
         for item in root.findall('.//item')[:8]:
-            title = item.find('title').text
-            headlines.append(f"- {title}")
+            title = sanitize_external_text(item.find('title').text)
+            if title:
+                headlines.append(f"- {title}")
     except Exception as e:
         headlines.append(f"Error fetching news: {e}")
     return "\n".join(headlines)
@@ -121,9 +135,6 @@ DECISION MATRIX:
 - BTC < -5%: RISK_MULTIPLIER 0.0 (pause all entries)
 - BTC flat or positive: RISK_MULTIPLIER 1.0, SL_MULT_OFFSET 0.0
 
-PREVIOUS LEARNINGS / RESEARCH NOTES:
-{open('/root/research_notes.md').read() if os.path.exists('/root/research_notes.md') else 'No previous learnings.'}
-
 OUTPUT FORMAT:
 Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matching this schema:
 {{
@@ -134,18 +145,27 @@ Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matchi
   "blacklist_add": list of strings (e.g. ["DOGEUSDT"]),
   "whitelist_add": list of strings (e.g. ["WIFUSDT", "RENDERUSDT"], only for hyped altcoins),
   "rationale": string (brief, 1-sentence strategic rationale, mentioning the reddit sentiment),
-  "confidence": float (0.0 to 1.0),
-  "learning_to_persist": string (optional, 1-sentence note to append to research_notes.md if you learned something new)
+  "confidence": float (0.0 to 1.0)
 }}
 """
 
     print("Invoking Antigravity AI Agent...")
     try:
+        # Scrub secrets from the environment handed to the agy (LLM) subprocess.
+        # The LLM never needs trading/email credentials; removing them limits the blast
+        # radius of any prompt-injection from untrusted feed/web content.
+        SECRET_PREFIXES = ('BINANCE_', 'GMAIL_', 'AWS_', 'OPENAI_')
+        SECRET_KEYS = {'API_KEY', 'API_SECRET', 'SECRET', 'PASSWORD', 'TOKEN'}
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith(SECRET_PREFIXES) and k.upper() not in SECRET_KEYS
+        }
         proc = subprocess.run(
-            ['/root/.local/bin/agy', '--dangerously-skip-permissions', '--print', prompt],
+            ['/root/.local/bin/agy', '--model', 'Gemini 3.8 Flash (Medium)', '--dangerously-skip-permissions', '--print', prompt],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            env=clean_env
         )
         response_text = proc.stdout.strip()
         
@@ -177,12 +197,6 @@ Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matchi
         
         with open('tactical_overrides.json', 'w') as f:
             json.dump(overrides, f, indent=4)
-            
-        learning = overrides.get('learning_to_persist', '').strip()
-        if learning:
-            with open('/root/research_notes.md', 'a') as f:
-                f.write(f"- [AI Manager {datetime.now().strftime('%Y-%m-%d %H:%M')}] {learning}\n")
-            print(f"Appended learning to research_notes.md: {learning}")
 
         print("Tactical overrides updated successfully:")
         print(json.dumps(overrides, indent=2))

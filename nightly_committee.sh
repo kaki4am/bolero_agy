@@ -17,7 +17,13 @@ BACKUP_DIR="/root/backups"
 mkdir -p "$BACKUP_DIR"
 
 # 0. Backup current state
-for f in *.py GEMINI.md *.json; do
+# Only snapshot the files the committee/Architect is allowed to modify: Python code,
+# the strategy spec (GEMINI.md), and config.json. Runtime STATE files (active_positions.json,
+# tactical_overrides.json, restricted_pairs.json, tracked_pairs.json, pnl_history.json, etc.)
+# are owned by the live bot and change during the ~1h run, so they must NOT be backed up or
+# rolled back — doing so would desync the bot from reality.
+ROLLBACK_FILES=(*.py GEMINI.md config.json)
+for f in "${ROLLBACK_FILES[@]}"; do
     if [ -s "/root/$f" ]; then
         cp "/root/$f" "$BACKUP_DIR/$f.bak"
     fi
@@ -25,7 +31,7 @@ done
 
 perform_rollback() {
     log_event "CRITICAL: Committee failed or rejected changes. Rolling back..."
-    for f in *.py GEMINI.md *.json; do
+    for f in "${ROLLBACK_FILES[@]}"; do
         if [ -s "$BACKUP_DIR/$f.bak" ]; then
             cp "$BACKUP_DIR/$f.bak" "/root/$f"
         fi
@@ -38,6 +44,11 @@ log_event "========================================="
 log_event "[$(date)] Starting Nightly Committee..."
 log_event "========================================="
 
+# 0. Nightly Strategic Reflection & Leak Diagnosis
+log_event "Phase 0: Running Autonomous Strategic Reflection & Auto-Heal..."
+/root/venv/bin/python /root/reflect.py --auto-heal
+REFLECTION_AUTOPSY=$(cat /root/reflection_autopsy.md 2>/dev/null || echo "No reflection autopsy generated.")
+
 # 1. Gather Data for Analysts
 log_event "Gathering data for analysts..."
 /root/venv/bin/python /root/export_report.py
@@ -48,7 +59,7 @@ HEALTH_REPORT=$(/root/venv/bin/python /root/system_health.py)
 BOT_LOGS=$(journalctl -u trading-bot.service -n 50 --no-pager)
 CURRENT_CONFIG=$(cat /root/config.json)
 RECENT_BACKTEST=""
-RESEARCH_NOTES=$(cat /root/research_notes.md 2>/dev/null || echo "No previous research notes.")
+RESEARCH_NOTES=$(cat /root/rejected_ideas.md 2>/dev/null || echo "No previously rejected ideas.")
 
 # Get baseline for Price Analyst
 BASELINE=$(/root/venv/bin/python -c "
@@ -151,6 +162,44 @@ try:
         FROM buy_sells GROUP BY pair HAVING n >= 5 ORDER BY avg DESC
     """)
     results['by_pair'] = [{'pair': r[0], 'trades': r[1], 'avg_pnl': r[2], 'win_rate': r[3], 'total_pnl': r[4]} for r in cursor.fetchall()]
+
+    # Attribute each completed trade's PnL to the strategy VERSION that was live on its BUY date.
+    # version_history_log.json maps 'YYYY-MM-DD' -> 'Vxxx'. This links performance to the strategy at the time.
+    try:
+        with open('/root/version_history_log.json') as vf:
+            version_by_date = json.load(vf)
+    except Exception:
+        version_by_date = {}
+
+    cursor.execute("""
+        SELECT date(t1.timestamp) as buy_date,
+               ((t2.price - t1.price) / t1.price) * 100 as pnl_pct
+        FROM trades t1 JOIN trades t2
+          ON t1.pair = t2.pair AND t2.side = 'SELL'
+         AND t2.id = (SELECT MIN(id) FROM trades WHERE pair = t1.pair AND side = 'SELL' AND id > t1.id)
+        WHERE t1.side = 'BUY'
+    """)
+    from collections import defaultdict
+    ver_stats = defaultdict(lambda: {'n': 0, 'sum': 0.0, 'wins': 0})
+    for buy_date, pnl_pct in cursor.fetchall():
+        if pnl_pct is None:
+            continue
+        version = version_by_date.get(buy_date, 'unknown')
+        s = ver_stats[version]
+        s['n'] += 1
+        s['sum'] += pnl_pct
+        if pnl_pct > 0:
+            s['wins'] += 1
+    results['by_version'] = [
+        {
+            'version': v,
+            'trades': s['n'],
+            'avg_pnl': round(s['sum'] / s['n'], 3) if s['n'] else 0,
+            'win_rate': round(s['wins'] / s['n'] * 100, 1) if s['n'] else 0,
+            'total_pnl': round(s['sum'], 2),
+        }
+        for v, s in sorted(ver_stats.items(), key=lambda kv: kv[0])
+    ]
 except Exception as e:
     pass
 conn.close()
@@ -172,6 +221,7 @@ PROMPT_TRADE="You are the Trade Data Analyst. Analyze the historical trade data 
 DB STATS: $DB_STATS
 TRADE ANALYSIS: $TRADE_ANALYSIS
 PREVIOUS LEARNINGS: $RESEARCH_NOTES
+CRITICAL REQUIREMENT: Scrutinize commission drag and overtrading. If fees are high relative to gross profit, identify low-conviction setups to eliminate.
 IMPORTANT: YOU ARE AN ANALYST ONLY. DO NOT MODIFY ANY CODE FILES OR WORKSPACE FILES. 
 Just output your proposed filters directly to standard output. Be extremely concise and clear."
 
@@ -181,15 +231,16 @@ LAST 24H PERFORMANCE: $DAILY_REPORT
 RECENT LOGS: $BOT_LOGS
 RECENT BACKTEST: $RECENT_BACKTEST
 PREVIOUS LEARNINGS: $RESEARCH_NOTES
+CRITICAL REQUIREMENT: Ensure MAX_RISK_PER_TRADE_PERCENT does not exceed 20.0% to prevent destructive drawdowns. Verify that trailing stops and profit locks only trigger on genuine profits.
 IMPORTANT: YOU ARE AN ANALYST ONLY. DO NOT MODIFY ANY CODE FILES OR WORKSPACE FILES. 
 Just output your structural/risk proposals directly to standard output. Be extremely concise and clear."
 
 # Run in background with separate logs
-agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 10m0s --print "$PROMPT_PRICE" > /root/price_ideas.md 2>/dev/null &
+agy --model "Gemini 3.8 Flash (High)" --dangerously-skip-permissions --print-timeout 10m0s --print "$PROMPT_PRICE" > /root/price_ideas.md 2>/dev/null &
 PID_PRICE=$!
-agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 10m0s --print "$PROMPT_TRADE" > /root/trade_ideas.md 2>/dev/null &
+agy --model "Gemini 3.8 Flash (High)" --dangerously-skip-permissions --print-timeout 10m0s --print "$PROMPT_TRADE" > /root/trade_ideas.md 2>/dev/null &
 PID_TRADE=$!
-agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 10m0s --print "$PROMPT_SYSTEM" > /root/system_ideas.md 2>/dev/null &
+agy --model "Gemini 3.8 Flash (High)" --dangerously-skip-permissions --print-timeout 10m0s --print "$PROMPT_SYSTEM" > /root/system_ideas.md 2>/dev/null &
 PID_SYSTEM=$!
 
 wait $PID_PRICE
@@ -213,7 +264,10 @@ systemctl stop backtest-optimizer
 BASELINE_VAL=$(/root/venv/bin/python /root/run_quick_validation.py --baseline 2>/dev/null | tail -1)
 
 PROMPT_ARCHITECT=$(cat <<EOF
-You are the Chief Architect of the trading system. Your job is to read the proposals from your committee, synthesize the best ideas, and apply the final cohesive changes to the codebase.
+You are the Chief Architect of the trading system. Your job is to read the proposals from your committee and the strategic reflection autopsy, synthesize the best ideas, and apply cohesive self-healing changes to the codebase.
+
+NIGHTLY STRATEGIC REFLECTION & DIAGNOSED LEAKS:
+$REFLECTION_AUTOPSY
 
 COMMITTEE REPORTS:
 --- PRICE IDEAS ---
@@ -223,20 +277,26 @@ $(cat /root/trade_ideas.md 2>/dev/null)
 --- SYSTEM IDEAS ---
 $(cat /root/system_ideas.md 2>/dev/null)
 
-INSTRUCTIONS:
-1. Review all the ideas. Discard any that contradict each other or seem too risky/overfit.
-2. Formulate a final strategy plan.
-3. IMPLEMENT the chosen changes by modifying bot.py, portfolio_backtester.py, and tuner.py (if SEARCH_SPACE needs changing). Ensure the logic is 100% aligned. CRITICAL: Clean up any unused imports or dead code to pass linters.
+INSTRUCTIONS & GOVERNANCE RULES:
+1. PERPETUAL SELF-HEALING MANDATE:
+   In every run, inspect the Strategic Reflection above. Whenever active capital leaks are diagnosed (such as fee burn, chronic bleeding pairs, premature exits, or uncalibrated risk), resolve those specific leaks before proposing or deploying new strategy features. Never add speculative indicators or expand complexity while core leaks are draining portfolio equity.
+2. Review all the committee ideas. Discard any that contradict each other or seem too risky/overfit.
+3. IMPLEMENT the chosen changes by modifying bot.py, strategy rules, and tuner.py (if SEARCH_SPACE needs changing).
+   CRITICAL SIMULATION INTEGRITY:
+   - You MUST NEVER alter the order fill simulation, fee deduction, or stop-loss pricing math in portfolio_backtester.py.
+   - Any stop-loss exit must be executed at or below the candle market price. Never allow simulated trades to exit at prices higher than market reality.
+   - Do NOT increase MAX_RISK_PER_TRADE_PERCENT beyond 20.0% to protect account safety.
+   - Clean up any unused imports or dead code to pass linters.
 4. ITERATE AND TEST: First, run \`/root/venv/bin/python /root/verify_system.py\` to catch any vulture (dead code) or syntax errors, and fix them. Then, run \`/root/venv/bin/python /root/run_quick_validation.py\` using your run_command tool. The current baseline score is ${BASELINE_VAL:-"Unknown"}. If your new code scores lower than the baseline, revise your code and test again. MAXIMUM 5 ATTEMPTS. If you cannot beat the baseline after 5 attempts, you MUST stop testing, revert your changes to the safest option, and proceed to the next steps. Do NOT loop infinitely. Once you beat the baseline (or hit 5 fails), immediately proceed to step 5.
 5. Modify config.json if new parameters are needed. You are also explicitly AUTHORIZED to modify bolero.py, dashboard.py, and other UI scripts if the new strategy logic requires new visualizations, data tracking, or updated UI options.
 6. Update the strategy version and "Current Active Strategy" block in GEMINI.md.
 7. Write a summary of your actions to daily_opinion.html as raw HTML (no markdown backticks).
-8. If an idea was rejected, append a 1-sentence note to research_notes.md.
+8. If an idea was rejected, append a concise 1-sentence note (format: "- Rejected <idea>: <reason>.") to rejected_ideas.md. Only append genuinely NEW rejected ideas; do not duplicate ideas already listed there.
 EOF
 )
 
 log_event "Phase 2: Running Architect..."
-agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 15m0s --print "$PROMPT_ARCHITECT" > /tmp/architect_out.log 2>&1
+agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions --print-timeout 45m0s --print "$PROMPT_ARCHITECT" > /tmp/architect_out.log 2>&1
 echo -e "\n=== Architect Thoughts & Actions ===" >> "$LOG_FILE"
 cat /tmp/architect_out.log >> "$LOG_FILE"
 echo -e "====================================\n" >> "$LOG_FILE"
@@ -286,7 +346,27 @@ except:
         log_event "Nightly Committee Evolved Strategy! Baseline: ${BASELINE_VAL} -> ${BACKTEST_RESULT}"
         systemctl restart trading-bot
         systemctl restart backtest-optimizer
-        
+
+        # Record which strategy version is live as of today, so performance can be
+        # attributed to the strategy that produced it (see by_version trade analysis).
+        /root/venv/bin/python -c "
+import json, re, datetime
+try:
+    with open('/root/GEMINI.md') as f:
+        m = re.search(r'Strategy\s+(V\d+)', f.read())
+    version = m.group(1) if m else 'unknown'
+    path = '/root/version_history_log.json'
+    try:
+        with open(path) as f: log = json.load(f)
+    except Exception:
+        log = {}
+    log[datetime.date.today().isoformat()] = version
+    with open(path, 'w') as f: json.dump(log, f, indent=4)
+    print('Recorded version', version, 'for', datetime.date.today().isoformat())
+except Exception as e:
+    print('version log update failed:', e)
+" >> "$LOG_FILE" 2>&1
+
         log_event "Pushing new strategy to GitHub..."
         git -C /root add *.py GEMINI.md *.json *.md 2>/dev/null
         git -C /root commit -m "Auto-Deploy: Nightly Committee Strategy Evolution (Score: ${BACKTEST_RESULT})" 2>/dev/null

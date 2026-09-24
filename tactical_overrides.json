@@ -1,18 +1,14 @@
 {
-    "RISK_MULTIPLIER": 1.0,
-    "SL_MULT_OFFSET": 0.0,
-    "VOL_SPIKE_MULT_OFFSET": 0.0,
-    "PORTFOLIO_EJECT_OFFSET": 0.0,
+    "RISK_MULTIPLIER": 0.8,
+    "SL_MULT_OFFSET": -0.1,
+    "VOL_SPIKE_MULT_OFFSET": 0.1,
+    "PORTFOLIO_EJECT_OFFSET": 0.3,
     "blacklist_add": [],
     "whitelist_add": [
-        "ONEUSDT",
-        "CREAMUSDT",
         "NEARUSDT",
-        "ZECUSDT",
-        "ARUSDT",
+        "ONDOUSDT",
         "SOLUSDT"
     ],
-    "rationale": "With BTC up +5.61% holding firmly above $81K and Reddit r/CryptoCurrency debating cycle peak risks and disciplined portfolio rebalancing, full baseline risk is maintained to capture high-volume altcoin breakout momentum.",
-    "confidence": 0.95,
-    "learning_to_persist": "[AI Manager 2026-09-19 03:00] Confirmed that during strong bullish BTC expansion (+5.61%) holding above $81K, r/CryptoCurrency discussions debating cycle peaks and rebalancing strategies support maintaining full baseline risk while targeting top breakout and volume leaders like ONE, CREAM, NEAR, ZEC, and AR."
+    "rationale": "With BTC pulling back -1.87% amid macro yield spikes and r/CryptoCurrency sentiment leaning wary and risk-off over potential leverage resets, exposure is trimmed with tightened stops while whitelisting strong volume and narrative breakouts NEARUSDT, ONDOUSDT, and SOLUSDT.",
+    "confidence": 0.85
 }

@@ -252,7 +252,8 @@ class PortfolioBacktester:
                     current_profit_pct = (price - pos['entry_price']) / pos['entry_price']
                     
                     if hold_time_m > params.get('PROFIT_LOCK_TIME_H', 18) * 60:
-                        pos['sl'] = max(pos['sl'], pos['entry_price'] * (1.0 + params.get('PROFIT_LOCK_PCT', 0.0025)))
+                        if current_profit_pct >= params.get('PROFIT_LOCK_PCT', 0.005):
+                            pos['sl'] = max(pos['sl'], pos['entry_price'] * (1.0 + params.get('PROFIT_LOCK_PCT', 0.005)))
                     if hold_time_m > 24 * 60 and current_profit_pct >= 0.01:
                         pos['sl'] = max(pos['sl'], pos['entry_price'] * 1.003)
                         
@@ -274,7 +275,7 @@ class PortfolioBacktester:
                     if not exit_reason:
                         if s_data['low'][idx] <= old_sl:
                             exit_reason = "SL"
-                            exit_price = old_sl * (1.0 - slippage_pct)
+                            exit_price = min(old_sl, price) * (1.0 - slippage_pct)
                         elif take_profit > 0 and high_profit_pct >= take_profit:
                             exit_reason = "TakeProfit"
                             exit_price = pos['entry_price'] * (1.0 + take_profit) * (1.0 - slippage_pct)

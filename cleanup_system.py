@@ -22,6 +22,10 @@ WHITELIST = {
     'get_db_stats.py',
     'db_stats_summary.txt',
     'ai_manager.py',
+    'reflect.py',
+    'audit_invariants.py',
+    'reflection_autopsy.json',
+    'reflection_autopsy.md',
     
     # Dashboards and visualizers
     'dashboard.py',

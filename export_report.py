@@ -1,7 +1,19 @@
 import sqlite3
 import json
+import re
 import pandas as pd
 from datetime import datetime, timedelta
+
+def get_current_version():
+    """Read the active strategy version (e.g. 'V160') from GEMINI.md."""
+    try:
+        with open('GEMINI.md') as f:
+            m = re.search(r'Strategy\s+(V\d+)', f.read())
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return 'unknown'
 
 def export_report():
     conn = sqlite3.connect('trading_bot.db')
@@ -21,15 +33,18 @@ def export_report():
                 buys.append({
                     'qty': row['quantity'],
                     'price': row['price'],
+                    'fee': float(row['fee']) if row['fee'] is not None else 0.0,
                     'timestamp': pd.to_datetime(row['timestamp'])
                 })
             elif row['side'] == 'SELL':
                 sell_qty = row['quantity']
                 sell_price = row['price']
+                sell_fee = float(row['fee']) if row['fee'] is not None else 0.0
                 sell_ts = pd.to_datetime(row['timestamp'])
                 
                 cycle_qty = 0
                 cycle_cost = 0
+                cycle_buy_fee = 0
                 first_buy_ts = None
                 
                 while sell_qty > 0 and buys:
@@ -37,17 +52,22 @@ def export_report():
                     match_qty = min(sell_qty, buy['qty'])
                     cycle_qty += match_qty
                     cycle_cost += match_qty * buy['price']
+                    frac = match_qty / buy['qty'] if buy['qty'] > 0 else 1.0
+                    cycle_buy_fee += buy.get('fee', 0.0) * frac
                     if first_buy_ts is None:
                         first_buy_ts = buy['timestamp']
                     
                     buy['qty'] -= match_qty
+                    buy['fee'] = buy.get('fee', 0.0) * (1.0 - frac)
                     sell_qty -= match_qty
                     if buy['qty'] <= 0.0001:
                         buys.pop(0)
                         
                 if cycle_qty > 0:
                     avg_buy_price = cycle_cost / cycle_qty
-                    trade_pnl = (sell_price - avg_buy_price) * cycle_qty
+                    trade_gross_pnl = (sell_price - avg_buy_price) * cycle_qty
+                    trade_fees = cycle_buy_fee + sell_fee
+                    trade_net_pnl = trade_gross_pnl - trade_fees
                     pnl_percent = ((sell_price - avg_buy_price) / avg_buy_price) * 100
                     duration = sell_ts - first_buy_ts
                     
@@ -63,7 +83,10 @@ def export_report():
                         "pair": pair,
                         "buy_price": avg_buy_price,
                         "sell_price": sell_price,
-                        "pnl": trade_pnl,
+                        "gross_pnl": trade_gross_pnl,
+                        "net_pnl": trade_net_pnl,
+                        "fees": trade_fees,
+                        "pnl": trade_net_pnl,
                         "pnl_percent": pnl_percent,
                         "timestamp": row['timestamp'],
                         "buy_timestamp": first_buy_ts.strftime('%Y-%m-%d %H:%M:%S'),
@@ -78,7 +101,9 @@ def export_report():
         if datetime.strptime(t['timestamp'], '%Y-%m-%d %H:%M:%S') > yesterday
     ]
     
-    pnl = sum([t['pnl'] for t in last_24h_completed_trades])
+    gross_pnl = sum([t.get('gross_pnl', t['pnl']) for t in last_24h_completed_trades])
+    total_fees = sum([t.get('fees', 0.0) for t in last_24h_completed_trades])
+    net_pnl = sum([t['pnl'] for t in last_24h_completed_trades])
 
     # Sort and pick best/worst from last 24h completed trades
     completed_df = pd.DataFrame(last_24h_completed_trades)
@@ -97,9 +122,13 @@ def export_report():
 
     report = {
         "date": datetime.now().strftime('%Y-%m-%d'),
+        "strategy_version": get_current_version(),
         "total_trades": len(trades_count_df),
         "failed_trades_count": len(failed_df),
-        "total_realized_pnl": pnl,
+        "total_realized_gross_pnl": round(gross_pnl, 4),
+        "total_fees_paid": round(total_fees, 4),
+        "total_realized_net_pnl": round(net_pnl, 4),
+        "total_realized_pnl": round(net_pnl, 4),
         "best_trade": best_trade,
         "worst_trade": worst_trade,
         "completed_trades": last_24h_completed_trades,

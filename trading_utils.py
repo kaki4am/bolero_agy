@@ -7,17 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_binance_client():
-    api_key = os.getenv('BINANCE_API_KEY')
-    api_secret = os.getenv('BINANCE_API_SECRET')
-    return Client(api_key, api_secret)
-
 def init_db(db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path, timeout=30.0)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.OperationalError:
-        pass
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL")
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trades (
@@ -34,7 +26,7 @@ def init_db(db_path='trading_bot.db'):
     ''')
     try:
         cursor.execute("ALTER TABLE trades ADD COLUMN config_snapshot TEXT DEFAULT NULL")
-    except sqlite3.OperationalError:
+    except:
         pass
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS failed_trades (
@@ -54,7 +46,7 @@ def init_db(db_path='trading_bot.db'):
     conn.close()
 
 def log_trade(pair, side, price, quantity, fee=0, fee_asset=None, config_snapshot=None, db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('INSERT INTO trades (pair, side, price, quantity, fee, fee_asset, config_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?)',
                    (pair, side, price, quantity, fee, fee_asset, config_snapshot))
@@ -62,11 +54,16 @@ def log_trade(pair, side, price, quantity, fee=0, fee_asset=None, config_snapsho
     conn.close()
 
 def log_failed_trade(pair, error, db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('INSERT INTO failed_trades (pair, error) VALUES (?, ?)', (pair, error))
     conn.commit()
     conn.close()
+
+def get_binance_client():
+    api_key = os.getenv('BINANCE_API_KEY')
+    api_secret = os.getenv('BINANCE_API_SECRET')
+    return Client(api_key, api_secret)
 
 def humanize_time(timestamp_str):
     try:

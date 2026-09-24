@@ -87,8 +87,6 @@ def check_backtester():
                 'PORTFOLIO_HARVEST': 5.0, 'SL_MIN_PCT': 0.015, 'SL_MAX_PCT': 0.03,
                 'ATR_SL_MULT': 2.5
             }
-            
-        search_space = {k: [v] for k, v in config_params.items()}
         
         mock_df_1m = pd.DataFrame({
             'timestamp': pd.date_range(start='2026-05-10', periods=1000, freq='min'),
@@ -391,8 +389,14 @@ if __name__ == "__main__":
     quality_ok = check_code_quality()
     version_ok = check_version_consistency()
     
+    try:
+        from audit_invariants import test_invariants
+        invariants_ok = test_invariants()
+    except Exception as e:
+        print(f"  [FAIL] audit_invariants error: {e}")
+        invariants_ok = False
     
-    static_success = syntax_ok and quality_ok and version_ok
+    static_success = syntax_ok and quality_ok and version_ok and invariants_ok
     overall_success = static_success
     
     # 2. Runtime Checks (only run if static checks passed to prevent cascading tracebacks)
