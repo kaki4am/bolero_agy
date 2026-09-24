@@ -93,8 +93,21 @@ async def get_top_pairs(limit=50):
     return [p['symbol'] for p in sorted_pairs[:limit]]
 
 def update_bot_config(best_params):
+    current = load_config()
+    test_cfg = dict(current)
+    test_cfg.update(best_params)
+    
+    # Pre-deployment invariant verification
+    if test_cfg.get('MAX_RISK_PER_TRADE_PERCENT', 15.0) > 20.0:
+        print("REJECTED config update: MAX_RISK_PER_TRADE_PERCENT > 20.0%")
+        return False
+    if test_cfg.get('BASE_RISK_PERCENT', 1.5) > 2.5:
+        print("REJECTED config update: BASE_RISK_PERCENT > 2.5%")
+        return False
+
     save_config(best_params)
     print("Updated config.json. Bot will reload dynamically.")
+    return True
 
 async def fetch_historical_segment(client, start_str, end_str, symbols):
     import os
@@ -174,17 +187,24 @@ async def fetch_historical_segment(client, start_str, end_str, symbols):
                 
         tester.symbols = active_symbols
         
-        # Cache the fetched segment data
+        # Cache the fetched segment data atomically
         if tester.pair_data:
             try:
-                with open(cache_file, 'wb') as f:
+                tmp_cache = f"{cache_file}.tmp_{os.getpid()}"
+                with open(tmp_cache, 'wb') as f:
                     pickle.dump({
                         'pair_data': tester.pair_data,
                         'btc_15m': tester.btc_15m
                     }, f)
-                print(f"Saved segment to cache: {cache_file}")
+                os.replace(tmp_cache, cache_file)
+                print(f"Saved segment atomically to cache: {cache_file}")
             except Exception as e:
                 print(f"Failed to save segment to cache: {e}")
+                if os.path.exists(f"{cache_file}.tmp_{os.getpid()}"):
+                    try:
+                        os.remove(f"{cache_file}.tmp_{os.getpid()}")
+                    except Exception:
+                        pass
                 
         return tester
     except Exception as e:

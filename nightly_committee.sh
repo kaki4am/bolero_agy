@@ -62,20 +62,7 @@ RECENT_BACKTEST=""
 RESEARCH_NOTES=$(cat /root/rejected_ideas.md 2>/dev/null || echo "No previously rejected ideas.")
 
 # Get baseline for Price Analyst
-BASELINE=$(/root/venv/bin/python -c "
-import asyncio, sys, json
-sys.path.insert(0, '/root')
-from portfolio_backtester import PortfolioBacktester
-async def run():
-    with open('/root/config.json') as f:
-        params = json.load(f)
-    bt = PortfolioBacktester(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'LINKUSDT', 'NEARUSDT', 'INJUSDT', 'UNIUSDT', 'FILUSDT'], lookback='14 days ago UTC')
-    await bt.fetch_data()
-    bt.precalculate_all(params)
-    result = bt.run(params)
-    print(f'{result:.4f}')
-asyncio.run(run())
-" 2>/dev/null | tail -1)
+BASELINE=$(/root/venv/bin/python /root/run_quick_validation.py --baseline 2>/dev/null | tail -1)
 
 # Get market characteristics for Price Analyst
 PRICE_SUMMARY=$(/root/venv/bin/python << 'PYEOF'

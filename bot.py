@@ -506,10 +506,15 @@ class TradingBot:
             db_df = None
             
             for asset, actual_qty in balances.items():
+                if asset in ('USDT', 'BNB', 'FDUSD', 'USDC'):
+                    continue
                 pair = f"{asset}USDT"
                 
                 if pair in cached_positions:
                     cache = cached_positions[pair]
+                    entry_p = float(cache.get('entry_price', 0.0) or 0.0)
+                    if actual_qty * entry_p < 4.0:
+                        continue
                     self.positions[pair] = {
                         'entries': 1,
                         'entry_price': cache.get('entry_price'),
@@ -528,6 +533,8 @@ class TradingBot:
                     row = db_df[db_df['pair'] == pair]
                     if not row.empty and row.iloc[0]['side'] == 'BUY':
                         r = row.iloc[0]
+                        if actual_qty * float(r['price']) < 4.0:
+                            continue
                         fallback_time = time.time()
                         try:
                             if 'timestamp' in r and pd.notna(r['timestamp']):
@@ -707,7 +714,8 @@ class TradingBot:
             old_equity = self.equity_history[0][1]
             drawdown_1h = (old_equity - current_equity) / old_equity
             
-        if drawdown_1h > 0.01 or len([t for t in self.failed_trades_history if time.time() - t <= 3600]) >= 3:
+        circuit_breaker_dd = self.config.get('CIRCUIT_BREAKER_1H_DD', 0.035)
+        if drawdown_1h > circuit_breaker_dd or len([t for t in self.failed_trades_history if time.time() - t <= 3600]) >= 3:
             if self.circuit_breaker_until < time.time():
                 print(f"🛑 CIRCUIT BREAKER TRIPPED! Drawdown: {drawdown_1h*100:.2f}%, Fails: {len([t for t in self.failed_trades_history if time.time() - t <= 3600])}")
                 self.circuit_breaker_until = time.time() + 4 * 3600

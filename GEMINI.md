@@ -20,4 +20,4 @@ Binance spot trading bot managed by an autonomous AI agent. The AI has full auth
 - **Profit-Activated Trailing Stop**: Initial stops are kept wide (-6.0% to -7.0%). Trailing stops (-3.5%) only activate once a profit cushion of +6.0% to +8.0% is established.
 - **Time-Decay Momentum Check**: Trades held > 48h must maintain positive 24h momentum and strong volume relative to their 7-day average, or else they are gracefully closed for capital rotation.
 - **Dynamic Drawdown Floor**: Absolute portfolio-level structural floor (-7.0%) specifically for extended-duration trades (>24h).
-- **Portfolio Guard**: Global Eject at PORTFOLIO_EJECT%, Global Harvest at PORTFOLIO_HARVEST%, Circuit Breaker 4H Pause on >3 Fails or >1% 1H Drawdown.
+- **Portfolio Guard**: Global Eject at PORTFOLIO_EJECT%, Global Harvest at PORTFOLIO_HARVEST%, Circuit Breaker 4H Pause on >3 Fails or >3.5% 1H Drawdown.

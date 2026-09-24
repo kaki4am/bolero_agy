@@ -197,7 +197,8 @@ class PortfolioBacktester:
             # We will use circuit_breaker_until_ts
             
                     
-            if drawdown_1h > 0.01 or len(failed_trades_history) >= 3:
+            cb_dd = params.get('CIRCUIT_BREAKER_1H_DD', 0.035)
+            if drawdown_1h > cb_dd or len(failed_trades_history) >= 3:
                 circuit_breaker_until_ts = ts + pd.Timedelta(hours=4)
                 
             portfolio_pnl_pct = (total_unrealized_pnl / current_equity) * 100 if current_equity > 0 else 0
