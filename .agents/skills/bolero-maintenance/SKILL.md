@@ -1,17 +1,91 @@
 ---
 name: bolero-maintenance
-description: Operational runbook and diagnostic procedures for maintaining, auditing, and evolving the Bolero Binance spot trading bot (Strategy V160). Use when auditing live trading performance, diagnosing fee drag or simulation drift, running stress tests, tuning parameters, or inspecting quantitative invariants.
+description: Operational runbook, institutional knowledge base, and diagnostic procedures for maintaining, auditing, and evolving the Bolero Binance spot trading bot (Strategy V160). Use when auditing live trading performance, diagnosing fee drag or simulation drift, running stress tests, tuning parameters, or inspecting quantitative invariants.
 metadata:
   icon: show_chart
 ---
 
 # Bolero Trading Bot Operational Runbook & Maintenance Skill
 
-This skill provides the standard operating procedures, architectural invariants, diagnostic runbooks, and autonomous multi-agent adversarial audit workflows for the autonomous Binance spot trading bot (Strategy V160).
+This skill provides the comprehensive domain knowledge, architectural invariants, diagnostic runbooks, and autonomous multi-agent adversarial audit workflows for the autonomous Binance spot trading bot (Strategy V160).
 
 ---
 
-## 1. System Architecture & Component Roles
+## 1. Bolero Knowledge Base (What the Skill Knows About Bolero)
+
+### 1.1 Identity & High-Level Mission
+* **System Name:** Bolero (managed autonomously under the directive in [`/root/GEMINI.md`](file:///root/GEMINI.md)).
+* **Exchange & Asset Class:** **Binance Spot exclusively** (USDT quote pairs). 
+* **Zero Leverage / No Derivatives:** Bolero strictly trades spot assets—no margin borrowing, no perpetual contracts, no funding rates, and no liquidation risk.
+* **Core Trading Philosophy:** Continuous market exposure and aggressive capital rotation. Bolero targets altcoins displaying relative strength (decoupling) and volume anomalies while Bitcoin consolidates. Capital is never left 100% idle in cash, nor held indefinitely in stagnant chop.
+
+### 1.2 Active Strategy: V160 ("Volatile Momentum & Decoupling Squeeze")
+* **Primary Entry Setup:** Decoupled squeeze breakout targeting altcoins breaking out with expanding Bollinger Bands while BTC consolidates.
+  * **BTC Regime Filter:** BTC 4h Rate-of-Change (ROC) between `-3.0%` and `+1.0%`.
+  * **Relative Strength Filter:** Altcoin 4h ROC > (BTC 4h ROC + 3.0%).
+  * **Volume Anomaly:** Altcoin RVOL > 1.5x (current hour volume vs. 24h rolling average).
+  * **Breakout Trigger:** Price closes outside the upper Bollinger Band with expanding bands.
+  * **Macro Risk Scaling:** 
+    * `1.0x` if BTC 24h return $\ge -1.0\%$
+    * `0.8x` if BTC 24h return between `-3.0%` and `-1.0%`
+    * `0.5x` if BTC 24h return $\le -3.0\%$
+* **Exit Architecture:**
+  * **Profit-Activated Trailing Stop:** Wide initial stop (`-6.0%` to `-7.0%`); trailing stop (`-3.5%`) activates only after establishing a profit cushion (`+6.0%` to `+8.0%`).
+  * **Time-Decay Momentum Check:** Trades held $>48\text{h}$ must maintain positive 24h momentum and healthy volume, or face graceful liquidation for capital rotation.
+  * **Dynamic Drawdown Floor:** Structural `-7.0%` absolute floor specifically enforced on extended trades ($>24\text{h}$).
+  * **Portfolio Guard:** Global Eject at `PORTFOLIO_EJECT%` (e.g. `-5.0%`), Global Harvest at `PORTFOLIO_HARVEST%` (e.g. `+4.0%`).
+  * **Circuit Breaker:** 4-hour entry pause triggered if 1-hour portfolio drawdown exceeds `3.5%` or if $>3$ execution losses occur within 1 hour.
+
+### 1.3 Infrastructure & Tech Stack
+* **Host Environment:** Ubuntu Linux VPS (`vultr`).
+* **Python Runtime:** Python 3.12 in dedicated virtual environment at `/root/venv`.
+* **System Services (`systemd`):**
+  * `trading-bot.service`: Continuous execution engine running [`/root/bot.py`](file:///root/bot.py).
+  * `backtest-optimizer.service`: Continuous Optuna hyperparameter tuner running [`/root/tuner.py`](file:///root/tuner.py).
+* **Scheduled Tasks & Governance:**
+  * **Hourly AI Manager (`cron`):** [`ai_manager.py`](file:///root/ai_manager.py) analyzes market sentiment, publishes tactical multipliers to [`tactical_overrides.json`](file:///root/tactical_overrides.json), and identifies narrative candidates.
+  * **Nightly Committee (03:00 UTC `cron`):** [`nightly_committee.sh`](file:///root/nightly_committee.sh) convenes an autonomous multi-role AI board (Price Analyst, Risk Officer, Architect, Strategy Designer) to audit daily performance, run stress tests, and evolve parameters.
+* **Data & State Persistence:**
+  * [`/root/trading_bot.db`](file:///root/trading_bot.db): SQLite database with WAL journal mode storing execution history (`trades`, `failed_trades`, `daily_pnl`).
+  * [`/root/config.json`](file:///root/config.json): Core parameter matrix (stops, profit targets, sizing, indicators).
+  * [`/root/active_positions.json`](file:///root/active_positions.json): Real-time in-memory position state mirror.
+  * [`/root/restricted_pairs.json`](file:///root/restricted_pairs.json): Dynamically quarantined chronic underperforming coins.
+  * [`/root/.backtester_cache/*.pkl`](file:///root/.backtester_cache/): Multi-day 1m/15m OHLCV cache for fast backtest execution.
+
+### 1.4 Historical Sensitivities & Known Operational Traps
+* **Fee Churn Vulnerability:** Binance charges 0.10% each side (0.20% round-trip). Rapid high-frequency cycling in choppy markets can generate positive gross returns while burning net cash in fees.
+* **Circuit Breaker False Tripping:** Over-tight thresholds (e.g. 1.0%) trigger 20+ times a week on standard altcoin beta noise, locking the bot in 100% cash during explosive momentum runs.
+* **Wallet Dust Accumulation:** Sub-dollar leftovers from fractional fills must be filtered out with a `$4.00` minimum notional threshold during balance sync to avoid blocking valid risk slots.
+* **Chronic Bleeder Coins:** Certain illiquid or downward-trending pairs bleed consistently; they must be actively identified and quarantined via [`reflect.py --auto-heal`](file:///root/reflect.py).
+
+---
+
+## 2. Mission & Purpose: How This Skill Helps
+
+This skill serves as the **authoritative operational anchor, institutional memory, and quantitative guardian** for any AI agent working on the Bolero codebase.
+
+### Core Assistance Capabilities:
+
+1. **Enforcing Invariant Boundaries & Preventing Regressions:**
+   * Prevents agents from altering backtest fill physics, un-clamping stop losses, or reintroducing phantom profit-lock bugs that report false backtest wins.
+   * Enforces hard position sizing ceilings (`MAX_RISK <= 20%`, `BASE_RISK <= 2.5%`) to prevent single-coin blowups.
+
+2. **Providing Grounded Diagnostics (The Anti-Sycophancy Filter):**
+   * Keeps agents strictly focused on real, solvable spot execution problems (fee drag, circuit breaker lockouts, uncalibrated sizing, bleeder pairs).
+   * Explicitly blocks future agents from proposing irrelevant institutional derivatives complexity (perpetual funding rates, order-book depth) when diagnosing spot strategy issues.
+
+3. **Autonomous Auto-Healing & Post-Trade Reflection:**
+   * Directs agents to run [`reflect.py --auto-heal`](file:///root/reflect.py) to perform FIFO trade matching with net fees, identify capital leaks, and quarantine chronic bleeding coins without needing human intervention.
+
+4. **Multi-Agent Adversarial Auditing (`/goal` Mode):**
+   * Provides a structured procedure to spawn specialized adversarial subagents (Invariant Exploiter, Execution Breaker, Governance Saboteur) to stress-test the entire codebase, discover edge cases, and maintain an active hardening backlog.
+
+5. **Standardized Pre-Flight Verification:**
+   * Provides a turnkey 7-step test suite ([`verify_system.py`](file:///root/verify_system.py)) and mathematical invariant firewall ([`audit_invariants.py`](file:///root/audit_invariants.py)) that must pass 100% before any code change or parameter update is committed.
+
+---
+
+## 3. System Architecture & Component Roles
 
 The architecture uses a **two-tier autonomous governance model** coupled with hard mathematical and execution firewalls:
 
@@ -31,7 +105,7 @@ The architecture uses a **two-tier autonomous governance model** coupled with ha
 
 ---
 
-## 2. The Non-Negotiable Invariant Laws
+## 4. The Non-Negotiable Invariant Laws
 
 Any agent working on this repository MUST preserve these core quantitative invariants:
 
@@ -76,7 +150,7 @@ Any agent working on this repository MUST preserve these core quantitative invar
 
 ---
 
-## 3. Standard Operating Procedures (SOP)
+## 5. Standard Operating Procedures (SOP)
 
 ### SOP 1: Health & Performance Audit
 To evaluate current portfolio status, circuit breaker liveness, and execution health:
@@ -127,7 +201,7 @@ Validates:
 
 ---
 
-## 4. Diagnostic Playbook
+## 6. Diagnostic Playbook
 
 ### Issue A: High Binance Fee Drag
 - **Symptom:** Gross PnL is positive, but net PnL is negative due to high fees.
@@ -161,7 +235,7 @@ Validates:
 
 ---
 
-## 5. Adversarial Multi-Agent Audit Runbook (/goal Mode)
+## 7. Adversarial Multi-Agent Audit Runbook (/goal Mode)
 
 Going forward, this skill is designed to autonomously review the entire codebase and identify architectural vulnerabilities, execution leaks, and quant simulation drift by spawning **three specialized adversarial subagents** in `/goal` mode.
 
