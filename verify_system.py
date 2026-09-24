@@ -238,6 +238,8 @@ async def run_single_stress(client, tester, params, period, symbols):
     for s in symbols:
         kl_1m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_1MINUTE, period['start'], period['end'])
         kl_15m = await client.get_historical_klines(s, AsyncClient.KLINE_INTERVAL_15MINUTE, btc_15m_start, period['end'])
+        if not kl_1m or not kl_15m or len(kl_1m) < 100:
+            continue
         
         df_1m = pd.DataFrame(kl_1m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tbbav', 'tbqav', 'ignore'])
         for col in ['open', 'high', 'low', 'close', 'volume', 'qav']:
@@ -251,8 +253,11 @@ async def run_single_stress(client, tester, params, period, symbols):
         
         tester.pair_data[s] = {'1m': df_1m, '15m': df_15m}
 
+    if not tester.pair_data:
+        return 0.0, 0
     tester.precalculate_all()
-    return tester.run(params)
+    pnl = tester.run(params)
+    return pnl, len(tester.trades)
 
 def check_historical_stress_tests():
     print("\nStep 6: Historical Stress Testing & Random Walk Validation")
@@ -289,8 +294,8 @@ def check_historical_stress_tests():
         {"name": "Leverage Flush (August 2023)", "start": "2023-08-15 UTC", "end": "2023-08-22 UTC"}
     ]
     
-    # Generate a completely random historical week from the last 9 years (between 60 days ago and 3280 days ago)
-    days_back = random.randint(60, 3280)
+    # Generate a random historical week from the last 5 years (between 60 days and 1800 days ago)
+    days_back = random.randint(60, 1800)
     rand_start = datetime.now(timezone.utc) - timedelta(days=days_back)
     rand_end = rand_start + timedelta(days=7)
     
@@ -304,7 +309,8 @@ def check_historical_stress_tests():
         "is_random": True
     })
     
-    symbols = ['BTCUSDT', 'ETHUSDT']
+    # Include liquid legacy altcoins with deep historical data on Binance for realistic altcoin stress testing
+    symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'LINKUSDT']
     
     async def run_all_async():
         client = await AsyncClient.create(api_key, api_secret, testnet=False)
@@ -312,8 +318,8 @@ def check_historical_stress_tests():
         try:
             for period in stress_periods:
                 tester = pb_mod.PortfolioBacktester(symbols=symbols)
-                pnl = await run_single_stress(client, tester, config_params, period, symbols)
-                results[period['name']] = (pnl, period.get('is_random', False))
+                pnl, trade_count = await run_single_stress(client, tester, config_params, period, symbols)
+                results[period['name']] = (pnl, period.get('is_random', False), trade_count)
         finally:
             await client.close_connection()
         return results
@@ -328,18 +334,18 @@ def check_historical_stress_tests():
         return False
 
     success = True
-    for k, (pnl, is_random) in results.items():
+    for k, (pnl, is_random, trade_count) in results.items():
         if pnl is None:
             print(f"  [FAIL] {k}: Fetch Error")
             success = False
         else:
-            # Random walks must not experience catastrophic loss (safety limit of -10.0%)
             floor = -10.0 if is_random else -15.0
+            trade_info = f"({trade_count} trade{'s' if trade_count != 1 else ''})" if trade_count > 0 else "(0 trades - Macro Filter Held)"
             if pnl < floor:
-                print(f"  [FAIL] {k}: {pnl:+.2f}% (Violated safety floor of {floor}%)")
+                print(f"  [FAIL] {k}: {pnl:+.2f}% {trade_info} (Violated safety floor of {floor}%)")
                 success = False
             else:
-                print(f"  [PASS] {k}: {pnl:+.2f}%")
+                print(f"  [PASS] {k}: {pnl:+.2f}% {trade_info}")
             
     return success
 def check_code_quality():

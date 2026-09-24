@@ -1,14 +1,14 @@
 {
-    "RISK_MULTIPLIER": 0.8,
+    "RISK_MULTIPLIER": 0.85,
     "SL_MULT_OFFSET": -0.1,
     "VOL_SPIKE_MULT_OFFSET": 0.1,
-    "PORTFOLIO_EJECT_OFFSET": 0.3,
+    "PORTFOLIO_EJECT_OFFSET": 0.25,
     "blacklist_add": [],
     "whitelist_add": [
         "NEARUSDT",
-        "ONDOUSDT",
-        "SOLUSDT"
+        "CREAMUSDT",
+        "ONDOUSDT"
     ],
-    "rationale": "With BTC pulling back -1.87% amid macro yield spikes and r/CryptoCurrency sentiment leaning wary and risk-off over potential leverage resets, exposure is trimmed with tightened stops while whitelisting strong volume and narrative breakouts NEARUSDT, ONDOUSDT, and SOLUSDT.",
-    "confidence": 0.85
+    "rationale": "With BTC dipping -1.13% amid macro yield pressure and r/CryptoCurrency sentiment leaning cautious with altcoin fatigue, risk exposure is reduced to 0.85 with tightened stops while tracking high-volume decoupling momentum in NEAR and CREAM.",
+    "confidence": 0.88
 }
