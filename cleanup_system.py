@@ -60,6 +60,8 @@ WHITELIST = {
     'daily_report.json',
     'backtest_status.json',
     'cleanup_log.json',
+    'daily_signal_brief.py',
+    'link_signal.py',
     'trading-bot.service',
     'backtest-optimizer.service',
     

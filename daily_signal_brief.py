@@ -19,11 +19,9 @@ load_dotenv('/root/.env')
 
 sys.path.append('/root')
 
-CONFIG_FILE = '/root/config.json'
 ACTIVE_POS_FILE = '/root/active_positions.json'
 TACTICAL_FILE = '/root/tactical_overrides.json'
 AUTOPSY_FILE = '/root/reflection_autopsy.md'
-RESEARCH_NOTES_FILE = '/root/research_notes.md'
 EVOLVER_LOG = '/root/strategy_evolver.log'
 CREDIT_GATE_LOG = '/root/gemini_credit_gate.log'
 DB_FILE = '/root/trading_bot.db'
@@ -531,44 +529,11 @@ def send_signal_message(message_text: str, recipient: str = None, sender_account
         print(f"[-] Signal execution error: {e}")
         return False
 
-def send_email_message(subject: str, message_text: str, recipient: str = None) -> bool:
-    """Dispatches the generated briefing via Gmail SMTP."""
-    user = os.getenv('GMAIL_USER')
-    password = os.getenv('GMAIL_PASS')
-    recipient = recipient or os.getenv('GMAIL_RECIPIENT') or user
-
-    if not user or not password:
-        print("[!] GMAIL_USER or GMAIL_PASS not specified in /root/.env")
-        return False
-
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = f"Bolero Chief AI Officer <{user}>"
-        msg['To'] = recipient
-        msg['Subject'] = subject
-        msg.attach(MIMEText(message_text, 'plain', 'utf-8'))
-
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
-        server.login(user, password)
-        server.sendmail(user, [recipient], msg.as_string())
-        server.quit()
-        print(f"[+] Email briefing successfully sent to {recipient}!")
-        return True
-    except Exception as e:
-        print(f"[-] Gmail send failed: {e}")
-        return False
-
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Bolero Daily Briefing & Projections Generator")
     parser.add_argument('--send', action='store_true', help="Send the message via Signal (requires configured recipient)")
-    parser.add_argument('--email', action='store_true', help="Send the message via Gmail (requires configured GMAIL_USER/PASS)")
     parser.add_argument('--recipient', type=str, help="Signal recipient phone number (e.g. +1234567890)")
-    parser.add_argument('--email-to', type=str, help="Email recipient address (defaults to GMAIL_USER in .env)")
     parser.add_argument('--sender', type=str, help="Signal sender account/number registered in signal-cli")
     parser.add_argument('--preview', action='store_true', default=True, help="Print message to stdout")
     args = parser.parse_args()
@@ -602,17 +567,13 @@ def main():
     print("[*] Invoking agy to generate executive narrative and projections...")
     narrative = generate_ai_narrative(json.dumps(full_context, indent=2), formatted_projections)
 
-    if args.preview or (not args.send and not args.email):
+    if args.preview or not args.send:
         print("\n" + "="*50 + " GENERATED BRIEF " + "="*50)
         print(narrative)
         print("="*124 + "\n")
 
     if args.send:
         send_signal_message(narrative, recipient=args.recipient, sender_account=args.sender)
-
-    if args.email:
-        subject = f"Bolero Daily Executive Brief - {datetime.now().strftime('%Y-%m-%d')}"
-        send_email_message(subject, narrative, recipient=args.email_to)
 
 if __name__ == '__main__':
     main()
