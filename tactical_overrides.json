@@ -5,11 +5,10 @@
     "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
-        "QNTUSDT",
-        "MOVRUSDT",
         "NEARUSDT",
-        "ZECUSDT"
+        "QNTUSDT",
+        "MOVRUSDT"
     ],
-    "rationale": "With BTC consolidating flat at -0.51% and Reddit r/CryptoCurrency sentiment leaning cautious and skeptical over cycle durability, baseline risk parameters are maintained while whitelisting decoupled momentum breakout candidates QNT, MOVR, NEAR, and ZEC.",
-    "confidence": 0.88
+    "rationale": "With BTC up +1.19% and r/CryptoCurrency sentiment showing cautious optimism and greed backed by ETF inflows alongside selective altcoin outperformance, standard risk (1.0x) is maintained while whitelisting breakout momentum leaders NEARUSDT, QNTUSDT, and MOVRUSDT.",
+    "confidence": 0.95
 }

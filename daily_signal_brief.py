@@ -283,23 +283,35 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
     r7 = pnl_7d / equity
     cagr_7 = ((1.0 + r7) ** 52.14) - 1.0 if r7 > -1.0 else 0.0
 
-    # Project years [1, 2, 3, 5, 10]
+    def fmt_currency(val: float) -> str:
+        if val >= 1e12:
+            return f"${val/1e12:,.2f}T"
+        elif val >= 1e9:
+            return f"${val/1e9:,.2f}B"
+        elif val >= 1e6:
+            return f"${val/1e6:,.2f}M"
+        else:
+            return f"${val:,.0f}"
+
+    # Project years [1, 2, 3, 5, 10] across all methods
     years = [1, 2, 3, 5, 10]
     proj_30d = {y: equity * ((1.0 + cagr_30) ** y) for y in years}
-    proj_v160 = {y: equity * ((1.0 + cagr_v160_tempered) ** y) for y in [1, 2, 3, 5]}
-    proj_7d = {y: equity * ((1.0 + min(cagr_7, 10.0)) ** y) for y in [1, 2]}
+    proj_v160 = {y: equity * ((1.0 + cagr_v160_tempered) ** y) for y in years}
+    cagr_7_effective = min(cagr_7, 10.0)
+    proj_7d = {y: equity * ((1.0 + cagr_7_effective) ** y) for y in years}
 
     projections_data = {
         'starting_equity': equity,
         'rate_30d': r30,
         'cagr_30d': cagr_30,
-        'proj_30d': proj_30d,
+        'proj_30d': {y: fmt_currency(v) for y, v in proj_30d.items()},
         'rate_v160_raw': r_v160_raw,
         'days_v160': days_v160,
         'cagr_v160_tempered': cagr_v160_tempered,
-        'proj_v160': proj_v160,
+        'proj_v160': {y: fmt_currency(v) for y, v in proj_v160.items()},
         'rate_7d': r7,
-        'proj_7d': proj_7d
+        'cagr_7': cagr_7_effective,
+        'proj_7d': {y: fmt_currency(v) for y, v in proj_7d.items()}
     }
 
     # Format strictly for Signal & Email (no asterisks, clean bullets, uppercase headers, spyglass emoji)
@@ -308,22 +320,25 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
         f"Starting Baseline: ${equity:,.2f} (Live Spot Equity)",
         "",
         f"• 30-DAY SUSTAINED PACE (+{r30*100:.1f}%/mo | +{cagr_30*100:.1f}% Annual CAGR):",
-        f"  1 Year:   ${proj_30d[1]:,.0f}",
-        f"  2 Years:  ${proj_30d[2]:,.0f}",
-        f"  3 Years:  ${proj_30d[3]:,.0f}",
-        f"  5 Years:  ${proj_30d[5]:,.0f}",
-        f"  10 Years: ${proj_30d[10]:,.0f}",
+        f"  1 Year:   {fmt_currency(proj_30d[1])}",
+        f"  2 Years:  {fmt_currency(proj_30d[2])}",
+        f"  3 Years:  {fmt_currency(proj_30d[3])}",
+        f"  5 Years:  {fmt_currency(proj_30d[5])}",
+        f"  10 Years: {fmt_currency(proj_30d[10])}",
         "",
         f"• V160 DECOUPLED SQUEEZE (+{r_v160_raw*100:.1f}% in {days_v160:.0f}d | Tempered 15%/mo):",
-        f"  1 Year:   ${proj_v160[1]:,.0f}",
-        f"  2 Years:  ${proj_v160[2]:,.0f}",
-        f"  3 Years:  ${proj_v160[3]:,.0f}",
-        f"  5 Years:  ${proj_v160[5]:,.0f}",
-        "  10 Years: Spot altcoin liquidity ceiling reached ($500k-$1M max pool)",
+        f"  1 Year:   {fmt_currency(proj_v160[1])}",
+        f"  2 Years:  {fmt_currency(proj_v160[2])}",
+        f"  3 Years:  {fmt_currency(proj_v160[3])}",
+        f"  5 Years:  {fmt_currency(proj_v160[5])}",
+        f"  10 Years: {fmt_currency(proj_v160[10])}",
         "",
-        f"• 7-DAY SPRINT (+{r7*100:.1f}% in 7d):",
-        f"  1 Year:   ${proj_7d[1]:,.0f}",
-        f"  2 Years:  ${proj_7d[2]:,.0f}"
+        f"• 7-DAY SPRINT (+{r7*100:.1f}% in 7d | Annualized Momentum):",
+        f"  1 Year:   {fmt_currency(proj_7d[1])}",
+        f"  2 Years:  {fmt_currency(proj_7d[2])}",
+        f"  3 Years:  {fmt_currency(proj_7d[3])}",
+        f"  5 Years:  {fmt_currency(proj_7d[5])}",
+        f"  10 Years: {fmt_currency(proj_7d[10])}"
     ]
     formatted_block = "\n".join(block_lines)
 
@@ -466,8 +481,14 @@ RAW SYSTEM DATA:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if res.returncode == 0 and res.stdout.strip():
             cleaned = clean_for_signal(res.stdout.strip())
-            if "LONG-TERM CAPITAL PROJECTIONS" not in cleaned and formatted_projections:
-                cleaned += f"\n\n{formatted_projections}"
+            if formatted_projections:
+                import re
+                if re.search(r'🔭\s*LONG-TERM CAPITAL PROJECTIONS', cleaned, re.IGNORECASE):
+                    cleaned = re.split(r'🔭\s*LONG-TERM CAPITAL PROJECTIONS', cleaned, flags=re.IGNORECASE)[0].rstrip() + "\n\n" + formatted_projections
+                elif "LONG-TERM CAPITAL PROJECTIONS" in cleaned:
+                    cleaned = re.split(r'.*LONG-TERM CAPITAL PROJECTIONS', cleaned, flags=re.IGNORECASE)[0].rstrip() + "\n\n" + formatted_projections
+                else:
+                    cleaned += f"\n\n{formatted_projections}"
             return cleaned
         else:
             sys.stderr.write(f"agy error: {res.stderr}\n")
