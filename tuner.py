@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from portfolio_backtester import PortfolioBacktester
 from binance import AsyncClient
 from dotenv import load_dotenv
+from trading_utils import atomic_json_dump
 
 load_dotenv()
 
@@ -19,17 +20,17 @@ STATUS_FILE = 'backtest_status.json'
 
 SEARCH_SPACE = {
     'MIN_VOLATILITY': [0.0010, 0.0020],
-    'BASE_RISK_PERCENT': [1.0, 2.0, 3.0, 3.5],
-    'MAX_RISK_PER_TRADE_PERCENT': [10.0, 15.0, 20.0],
+    'BASE_RISK_PERCENT': [1.0, 1.5, 2.0, 2.5],
+    'MAX_RISK_PER_TRADE_PERCENT': [10.0, 15.0, 18.0, 20.0],
     'COOLDOWN_PERIOD': [300, 600, 900],
-    'ATR_SL_MULT': [2.0, 2.5, 3.0, 3.5],
+    'ATR_SL_MULT': [1.5, 2.0, 2.5, 3.0],
     'PORTFOLIO_EJECT': [-10.0, -5.0, -3.5],
     'PORTFOLIO_HARVEST': [4.0, 5.0, 8.0, 12.0],
-    'SL_MIN_PCT': [0.010, 0.015, 0.020],
-    'VOLATILITY_CAP': [0.015, 0.020, 0.025, 0.030],
+    'SL_MIN_PCT': [0.040, 0.050, 0.060, 0.070],
+    'VOLATILITY_CAP': [0.025, 0.030, 0.040, 0.050],
     'SCALE_1_POS': [0.8, 1.0],
     'SCALE_2_POS': [0.6, 0.8],
-    'SCALE_3_POS': [0.1, 0.2, 0.3, 0.4]
+    'SCALE_3_POS': [0.2, 0.3, 0.4]
 }
 
 def load_config():
@@ -44,12 +45,10 @@ def load_config():
 def save_config(params):
     current = load_config()
     current.update(params)
-    with open('config.json', 'w') as f:
-        json.dump(current, f, indent=4)
+    atomic_json_dump(current, 'config.json')
 
 def save_status(status):
-    with open(STATUS_FILE, 'w') as f:
-        json.dump(status, f, indent=4)
+    atomic_json_dump(status, STATUS_FILE)
 
 def get_status():
     if not os.path.exists(STATUS_FILE):

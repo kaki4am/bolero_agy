@@ -40,6 +40,8 @@ perform_rollback() {
     systemctl restart backtest-optimizer
 }
 
+trap 'systemctl restart backtest-optimizer 2>/dev/null' EXIT
+
 log_event "========================================="
 log_event "[$(date)] Starting Nightly Committee..."
 log_event "========================================="
@@ -298,7 +300,7 @@ log_event "Phase 4: Verification and Backtest Gate..."
 
 VERIFY_PASSED=false
 for ATTEMPT in 1 2 3; do
-    VERIFY_OUTPUT=$(/root/venv/bin/python /root/verify_system.py 2>&1)
+    VERIFY_OUTPUT=$(/root/venv/bin/python /root/verify_system.py 2>&1 && /root/venv/bin/python /root/audit_invariants.py 2>&1)
     if [ $? -eq 0 ]; then
         VERIFY_PASSED=true
         log_event "Verification passed."
@@ -321,10 +323,15 @@ if [ "$VERIFY_PASSED" = true ]; then
     
     PASSES=$(python3 -c "
 try:
-    baseline = float('${BASELINE_VAL:-"-999"}')
-    result = float('${BACKTEST_RESULT:-"-999"}')
-    print('yes' if result > -990.0 and result >= baseline else 'no')
-except:
+    raw_b = '''${BASELINE_VAL}'''.strip()
+    raw_r = '''${BACKTEST_RESULT}'''.strip()
+    baseline = float(raw_b)
+    result = float(raw_r)
+    if baseline <= -900.0 or result <= -900.0:
+        print('no')
+    else:
+        print('yes' if result >= baseline else 'no')
+except Exception:
     print('no')
 " 2>/dev/null)
 

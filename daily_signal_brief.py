@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/root/venv/bin/python3
 """
 daily_signal_brief.py
 Generates an AI-synthesized executive brief of Bolero trading performance,
@@ -102,7 +102,17 @@ def get_performance_stats():
         'losses_24h': 0,
         'pnl_7d': 0.0,
         'fees_7d': 0.0,
+        'trades_7d': 0,
         'win_rate_7d': 0.0,
+        'pnl_30d': 0.0,
+        'fees_30d': 0.0,
+        'trades_30d': 0,
+        'win_rate_30d': 0.0,
+        'pnl_v160': 0.0,
+        'fees_v160': 0.0,
+        'trades_v160': 0,
+        'win_rate_v160': 0.0,
+        'days_v160': 9.0,
         'recent_exits': []
     }
     
@@ -207,8 +217,29 @@ def get_performance_stats():
         if not sub7.empty:
             stats['pnl_7d'] = float(sub7['net'].sum())
             stats['fees_7d'] = float(sub7['fees'].sum())
+            stats['trades_7d'] = len(sub7)
             w7 = len(sub7[sub7['net'] > 0])
             stats['win_rate_7d'] = (w7 / len(sub7) * 100.0)
+
+        # 30 days
+        sub30 = rdf[rdf['sell_ts'] >= (now - timedelta(days=30))]
+        if not sub30.empty:
+            stats['pnl_30d'] = float(sub30['net'].sum())
+            stats['fees_30d'] = float(sub30['fees'].sum())
+            stats['trades_30d'] = len(sub30)
+            w30 = len(sub30[sub30['net'] > 0])
+            stats['win_rate_30d'] = (w30 / len(sub30) * 100.0)
+
+        # Since Strategy V160 deployment (Sep 21, 2026 11:28:35 UTC)
+        v160_start = pd.to_datetime('2026-09-21 11:28:35')
+        sub_v160 = rdf[rdf['sell_ts'] >= v160_start]
+        stats['days_v160'] = max((now - v160_start).total_seconds() / 86400.0, 1.0)
+        if not sub_v160.empty:
+            stats['pnl_v160'] = float(sub_v160['net'].sum())
+            stats['fees_v160'] = float(sub_v160['fees'].sum())
+            stats['trades_v160'] = len(sub_v160)
+            w_v160 = len(sub_v160[sub_v160['net'] > 0])
+            stats['win_rate_v160'] = (w_v160 / len(sub_v160) * 100.0)
             
         # Recent 5 exits
         for _, r in rdf.sort_values('sell_ts', ascending=False).head(5).iterrows():
@@ -224,6 +255,79 @@ def get_performance_stats():
         stats['error'] = str(e)
         
     return stats
+
+def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
+    """
+    Computes deterministic multi-year compounding projections (1, 2, 3, 5, 10 years)
+    based on empirical Bolero performance across:
+    1. 30-Day Sustained Pace (full cycle baseline)
+    2. V160 Decoupled Squeeze (since Sep 21 inception)
+    3. 7-Day Sprint Pace
+    """
+    equity = max(float(total_equity), 1.0)
+    pnl_30d = stats.get('pnl_30d', 0.0)
+    pnl_v160 = stats.get('pnl_v160', 0.0)
+    days_v160 = stats.get('days_v160', 9.0)
+    pnl_7d = stats.get('pnl_7d', 0.0)
+
+    # 1. 30-day rate & CAGR
+    r30 = pnl_30d / equity
+    cagr_30 = ((1.0 + r30) ** 12.0) - 1.0 if r30 > -1.0 else 0.0
+
+    # 2. V160 normalized monthly rate & tempered CAGR
+    r_v160_raw = pnl_v160 / equity
+    # Tempered realistic cycle CAGR (15% monthly to account for bear markets/consolidation):
+    cagr_v160_tempered = ((1.0 + 0.15) ** 12.0) - 1.0
+
+    # 3. 7-day rate & annual run-rate
+    r7 = pnl_7d / equity
+    cagr_7 = ((1.0 + r7) ** 52.14) - 1.0 if r7 > -1.0 else 0.0
+
+    # Project years [1, 2, 3, 5, 10]
+    years = [1, 2, 3, 5, 10]
+    proj_30d = {y: equity * ((1.0 + cagr_30) ** y) for y in years}
+    proj_v160 = {y: equity * ((1.0 + cagr_v160_tempered) ** y) for y in [1, 2, 3, 5]}
+    proj_7d = {y: equity * ((1.0 + min(cagr_7, 10.0)) ** y) for y in [1, 2]}
+
+    projections_data = {
+        'starting_equity': equity,
+        'rate_30d': r30,
+        'cagr_30d': cagr_30,
+        'proj_30d': proj_30d,
+        'rate_v160_raw': r_v160_raw,
+        'days_v160': days_v160,
+        'cagr_v160_tempered': cagr_v160_tempered,
+        'proj_v160': proj_v160,
+        'rate_7d': r7,
+        'proj_7d': proj_7d
+    }
+
+    # Format strictly for Signal & Email (no asterisks, clean bullets, uppercase headers, spyglass emoji)
+    block_lines = [
+        "🔭 LONG-TERM CAPITAL PROJECTIONS",
+        f"Starting Baseline: ${equity:,.2f} (Live Spot Equity)",
+        "",
+        f"• 30-DAY SUSTAINED PACE (+{r30*100:.1f}%/mo | +{cagr_30*100:.1f}% Annual CAGR):",
+        f"  1 Year:   ${proj_30d[1]:,.0f}",
+        f"  2 Years:  ${proj_30d[2]:,.0f}",
+        f"  3 Years:  ${proj_30d[3]:,.0f}",
+        f"  5 Years:  ${proj_30d[5]:,.0f}",
+        f"  10 Years: ${proj_30d[10]:,.0f}",
+        "",
+        f"• V160 DECOUPLED SQUEEZE (+{r_v160_raw*100:.1f}% in {days_v160:.0f}d | Tempered 15%/mo):",
+        f"  1 Year:   ${proj_v160[1]:,.0f}",
+        f"  2 Years:  ${proj_v160[2]:,.0f}",
+        f"  3 Years:  ${proj_v160[3]:,.0f}",
+        f"  5 Years:  ${proj_v160[5]:,.0f}",
+        "  10 Years: Spot altcoin liquidity ceiling reached ($500k-$1M max pool)",
+        "",
+        f"• 7-DAY SPRINT (+{r7*100:.1f}% in 7d):",
+        f"  1 Year:   ${proj_7d[1]:,.0f}",
+        f"  2 Years:  ${proj_7d[2]:,.0f}"
+    ]
+    formatted_block = "\n".join(block_lines)
+
+    return projections_data, formatted_block
 
 def get_market_and_system_health():
     """Inspect BTC market regime, systemd daemon states, and circuit breaker."""
@@ -315,23 +419,26 @@ def get_ai_governance_intel():
     return intel
 
 def clean_for_signal(text: str) -> str:
-    """Strip markdown asterisks and format cleanly for Signal Messenger."""
+    """Strip markdown asterisks, enforce spyglass emoji instead of magic balls, and format cleanly."""
     import re
+    # Enforce spyglass emoji instead of crystal ball
+    cleaned = text.replace('🔮', '🔭')
     # Remove markdown bold/italic asterisks
-    cleaned = text.replace('**', '').replace('*', '')
+    cleaned = cleaned.replace('**', '').replace('*', '')
     # Remove header hashes if any
     cleaned = re.sub(r'^#+\s*', '', cleaned, flags=re.MULTILINE)
     # Normalize multiple blank lines to at most two
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
     return cleaned.strip()
 
-def generate_ai_narrative(context_json: str) -> str:
+def generate_ai_narrative(context_json: str, formatted_projections: str = "") -> str:
     """Invokes agy to write an insightful, executive Signal briefing."""
     prompt = f"""You are the Chief AI Officer managing the Bolero Binance spot trading bot.
 Write a concise, insightful daily update for the fund owner delivered over Signal Messenger.
 
 STRICT FORMATTING RULES:
 - DO NOT USE ASTERISKS (*) OR DOUBLE ASTERISKS (**) ANYWHERE IN YOUR OUTPUT. Signal displays them as literal characters and they look messy.
+- DO NOT USE MAGIC CRYSTAL BALL EMOJIS (🔮). If referring to projections or future horizons, use the SPYGLASS EMOJI (🔭).
 - Use EMOJIS and UPPERCASE for headers and emphasis (e.g. 🤖 EXECUTIVE SUMMARY, 💰 PORTFOLIO & 24H PERFORMANCE).
 - Use clean unicode bullet points (•) for lists.
 - Avoid markdown hashes (#).
@@ -343,6 +450,7 @@ REQUIRED SECTIONS IN YOUR BRIEF:
 4. 🧠 AI MANAGER INTEL: What the hourly AI Manager discovered (Reddit/market sentiment, risk multiplier, whitelisted narrative coins, confidence).
 5. 🏛️ NIGHTLY COMMITTEE & STRATEGY STATUS: What the committee concluded (diagnosed leaks, reflection stance, whether evolutions passed or were gated/rolled back, active version).
 6. 🔭 24H FORWARD OUTLOOK: 1-2 key things to monitor today (e.g. BTC breakout levels, fee discipline, trailing stops).
+7. 🔭 LONG-TERM CAPITAL PROJECTIONS: Multi-year compounding projections (1, 2, 3, 5, 10 years) based on Bolero's empirical performance across 30-day pace, V160 deployment, and 7-day sprint. Present the projections using the exact figures from RAW SYSTEM DATA under capital_projections.
 
 RAW SYSTEM DATA:
 {context_json}
@@ -357,14 +465,20 @@ RAW SYSTEM DATA:
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if res.returncode == 0 and res.stdout.strip():
-            return clean_for_signal(res.stdout.strip())
+            cleaned = clean_for_signal(res.stdout.strip())
+            if "LONG-TERM CAPITAL PROJECTIONS" not in cleaned and formatted_projections:
+                cleaned += f"\n\n{formatted_projections}"
+            return cleaned
         else:
             sys.stderr.write(f"agy error: {res.stderr}\n")
     except Exception as e:
         sys.stderr.write(f"Failed to generate agy narrative: {e}\n")
 
     # Fallback template if agy is unavailable
-    return "Bolero Daily Briefing: Raw data collected but AGY synthesis was unavailable."
+    fallback = "Bolero Daily Briefing: Raw data collected but AGY synthesis was unavailable."
+    if formatted_projections:
+        fallback += f"\n\n{formatted_projections}"
+    return fallback
 
 def send_signal_message(message_text: str, recipient: str = None, sender_account: str = None) -> bool:
     """Dispatches the generated briefing via signal-cli."""
@@ -396,11 +510,44 @@ def send_signal_message(message_text: str, recipient: str = None, sender_account
         print(f"[-] Signal execution error: {e}")
         return False
 
+def send_email_message(subject: str, message_text: str, recipient: str = None) -> bool:
+    """Dispatches the generated briefing via Gmail SMTP."""
+    user = os.getenv('GMAIL_USER')
+    password = os.getenv('GMAIL_PASS')
+    recipient = recipient or os.getenv('GMAIL_RECIPIENT') or user
+
+    if not user or not password:
+        print("[!] GMAIL_USER or GMAIL_PASS not specified in /root/.env")
+        return False
+
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = f"Bolero Chief AI Officer <{user}>"
+        msg['To'] = recipient
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message_text, 'plain', 'utf-8'))
+
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
+        server.login(user, password)
+        server.sendmail(user, [recipient], msg.as_string())
+        server.quit()
+        print(f"[+] Email briefing successfully sent to {recipient}!")
+        return True
+    except Exception as e:
+        print(f"[-] Gmail send failed: {e}")
+        return False
+
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Bolero Daily Signal Briefing Generator")
+    parser = argparse.ArgumentParser(description="Bolero Daily Briefing & Projections Generator")
     parser.add_argument('--send', action='store_true', help="Send the message via Signal (requires configured recipient)")
+    parser.add_argument('--email', action='store_true', help="Send the message via Gmail (requires configured GMAIL_USER/PASS)")
     parser.add_argument('--recipient', type=str, help="Signal recipient phone number (e.g. +1234567890)")
+    parser.add_argument('--email-to', type=str, help="Email recipient address (defaults to GMAIL_USER in .env)")
     parser.add_argument('--sender', type=str, help="Signal sender account/number registered in signal-cli")
     parser.add_argument('--preview', action='store_true', default=True, help="Print message to stdout")
     args = parser.parse_args()
@@ -410,6 +557,11 @@ def main():
     
     print("[*] Calculating trade performance from SQLite database...")
     perf_data = get_performance_stats()
+
+    print("[*] Calculating multi-year capital compounding projections...")
+    projections_data, formatted_projections = calculate_capital_projections(
+        account_data.get('total_equity', 0.0), perf_data
+    )
     
     print("[*] Inspecting market regime and system health...")
     health_data = get_market_and_system_health()
@@ -421,20 +573,25 @@ def main():
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
         'portfolio': account_data,
         'performance': perf_data,
+        'capital_projections': projections_data,
         'health_and_market': health_data,
         'governance': gov_data
     }
 
-    print("[*] Invoking agy to generate executive narrative and opinions...")
-    narrative = generate_ai_narrative(json.dumps(full_context, indent=2))
+    print("[*] Invoking agy to generate executive narrative and projections...")
+    narrative = generate_ai_narrative(json.dumps(full_context, indent=2), formatted_projections)
 
-    if args.preview or not args.send:
-        print("\n" + "="*50 + " GENERATED SIGNAL BRIEF " + "="*50)
+    if args.preview or (not args.send and not args.email):
+        print("\n" + "="*50 + " GENERATED BRIEF " + "="*50)
         print(narrative)
         print("="*124 + "\n")
 
     if args.send:
         send_signal_message(narrative, recipient=args.recipient, sender_account=args.sender)
+
+    if args.email:
+        subject = f"Bolero Daily Executive Brief - {datetime.now().strftime('%Y-%m-%d')}"
+        send_email_message(subject, narrative, recipient=args.email_to)
 
 if __name__ == '__main__':
     main()

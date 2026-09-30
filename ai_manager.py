@@ -7,6 +7,7 @@ import subprocess
 from datetime import datetime
 from binance import Client
 from dotenv import load_dotenv
+from trading_utils import atomic_json_dump
 
 load_dotenv()
 
@@ -195,8 +196,7 @@ Output ONLY a raw JSON block (no markdown backticks, no explanatory text) matchi
         whitelist = overrides.get('whitelist_add', [])
         overrides['whitelist_add'] = [s for s in whitelist if isinstance(s, str) and s.endswith('USDT')]
         
-        with open('tactical_overrides.json', 'w') as f:
-            json.dump(overrides, f, indent=4)
+        atomic_json_dump(overrides, 'tactical_overrides.json')
 
         print("Tactical overrides updated successfully:")
         print(json.dumps(overrides, indent=2))

@@ -1,66 +1,76 @@
 import sqlite3
-import pandas as pd
 import os
 from datetime import datetime
-from binance import Client
 from dotenv import load_dotenv
+
+import json
 
 load_dotenv()
 
-def init_db(db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path)
+def get_db_connection(db_path='trading_bot.db'):
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.execute("PRAGMA journal_mode=WAL")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pair TEXT,
-            side TEXT,
-            price REAL,
-            quantity REAL,
-            fee REAL DEFAULT 0,
-            fee_asset TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            config_snapshot TEXT DEFAULT NULL
-        )
-    ''')
-    try:
-        cursor.execute("ALTER TABLE trades ADD COLUMN config_snapshot TEXT DEFAULT NULL")
-    except:
-        pass
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS failed_trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pair TEXT,
-            error TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS daily_pnl (
-            date TEXT PRIMARY KEY,
-            pnl REAL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    return conn
+
+def atomic_json_dump(data, filepath, indent=4):
+    tmp_path = f"{filepath}.tmp.{os.getpid()}"
+    with open(tmp_path, 'w') as f:
+        json.dump(data, f, indent=indent)
+    os.replace(tmp_path, filepath)
+
+def init_db(db_path='trading_bot.db'):
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pair TEXT,
+                side TEXT,
+                price REAL,
+                quantity REAL,
+                fee REAL DEFAULT 0,
+                fee_asset TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                config_snapshot TEXT DEFAULT NULL
+            )
+        ''')
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN config_snapshot TEXT DEFAULT NULL")
+        except:
+            pass
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS failed_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pair TEXT,
+                error TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_pnl (
+                date TEXT PRIMARY KEY,
+                pnl REAL
+            )
+        ''')
+        conn.commit()
 
 def log_trade(pair, side, price, quantity, fee=0, fee_asset=None, config_snapshot=None, db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO trades (pair, side, price, quantity, fee, fee_asset, config_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                   (pair, side, price, quantity, fee, fee_asset, config_snapshot))
-    conn.commit()
-    conn.close()
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO trades (pair, side, price, quantity, fee, fee_asset, config_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                       (pair, side, price, quantity, fee, fee_asset, config_snapshot))
+        conn.commit()
 
 def log_failed_trade(pair, error, db_path='trading_bot.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO failed_trades (pair, error) VALUES (?, ?)', (pair, error))
-    conn.commit()
-    conn.close()
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO failed_trades (pair, error) VALUES (?, ?)', (pair, error))
+        conn.commit()
 
 def get_binance_client():
+    from binance import Client
     api_key = os.getenv('BINANCE_API_KEY')
     api_secret = os.getenv('BINANCE_API_SECRET')
     return Client(api_key, api_secret)
@@ -80,6 +90,7 @@ def humanize_time(timestamp_str):
         return timestamp_str
 
 def get_trade_data(db_path='trading_bot.db', limit=None):
+    import pandas as pd
     conn = sqlite3.connect(db_path, timeout=30.0)
     if limit:
         trades_df = pd.read_sql_query(f"SELECT * FROM trades ORDER BY timestamp DESC LIMIT {limit}", conn)

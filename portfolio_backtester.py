@@ -17,7 +17,10 @@ class PortfolioBacktester:
         import json, os
         blacklist = []
         if os.path.exists("restricted_pairs.json"):
-            with open("restricted_pairs.json", "r") as f: blacklist = json.load(f)
+            try:
+                with open("restricted_pairs.json", "r") as f: blacklist = json.load(f)
+            except Exception:
+                blacklist = []
         self.pair_data = {k: v for k, v in self.pair_data.items() if k not in blacklist}
         total = len(self.pair_data)
         
@@ -96,17 +99,17 @@ class PortfolioBacktester:
             else:
                 indicators['btc_safe'] = pd.DataFrame(index=df_1m_idx.index)
 
-            indicators['atr'] = df_1h_idx['atr'].reindex(df_1m_idx.index).ffill().bfill().fillna(df_1m['close'] * 0.01)
+            indicators['atr'] = df_1h_idx['atr'].reindex(df_1m_idx.index).ffill().fillna(df_1m['close'] * 0.01)
             
-            indicators['hourly_volume'] = df_1h_idx['volume'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['vol_1h_avg_24h'] = df_1h_idx['vol_1h_avg_24h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['altcoin_4h_return'] = df_1h_idx['altcoin_4h_return'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['high_1h'] = df_1h_idx['high_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['low_1h'] = df_1h_idx['low_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['close_1h'] = df_1h_idx['close_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['alt_daily_range_pct'] = df_1h_idx['alt_daily_range_pct'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['ema_20_1h'] = df_1h_idx['ema_20_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
-            indicators['ema_50_1h'] = df_1h_idx['ema_50_1h'].reindex(df_1m_idx.index).ffill().bfill().fillna(0)
+            indicators['hourly_volume'] = df_1h_idx['volume'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['vol_1h_avg_24h'] = df_1h_idx['vol_1h_avg_24h'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['altcoin_4h_return'] = df_1h_idx['altcoin_4h_return'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['high_1h'] = df_1h_idx['high_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['low_1h'] = df_1h_idx['low_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['close_1h'] = df_1h_idx['close_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['alt_daily_range_pct'] = df_1h_idx['alt_daily_range_pct'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['ema_20_1h'] = df_1h_idx['ema_20_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['ema_50_1h'] = df_1h_idx['ema_50_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
 
             self.precalculated_indicators[symbol] = indicators
 
@@ -186,9 +189,9 @@ class PortfolioBacktester:
                 
             # Circuit Breaker Logic
             drawdown_1h = 0.0
-            if len(equity_history) == 60:
-                old_equity = equity_history[0][1]
-                drawdown_1h = (old_equity - current_equity) / old_equity
+            if len(equity_history) > 1:
+                peak_equity = max(e[1] for e in equity_history)
+                drawdown_1h = (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
             
             recent_fails = [t for t in failed_trades_history if (ts - t).total_seconds() <= 3600]
             failed_trades_history = recent_fails
@@ -273,6 +276,7 @@ class PortfolioBacktester:
                         
                     
                     
+                    old_sl = pos['sl']
                     if not exit_reason:
                         if s_data['low'][idx] <= old_sl:
                             exit_reason = "SL"
@@ -282,7 +286,7 @@ class PortfolioBacktester:
                             exit_price = pos['entry_price'] * (1.0 + take_profit) * (1.0 - slippage_pct)
 
                     if exit_reason:
-                        pnl = ((exit_price / pos['entry_price']) - 1) * 100
+                        pnl = ((exit_price / pos['entry_price']) * 0.998001 - 1.0) * 100
                         if pnl <= 0:
                             failed_trades_history.append(ts)
                         trades.append({'pair': s, 'pnl': pnl, 'reason': exit_reason, 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': idx - pos['time']})
@@ -385,8 +389,8 @@ class PortfolioBacktester:
             if pos['qty'] > 0:
                 final_price = np_data[s]['close'][-1]
                 exit_price = final_price * (1.0 - slippage_pct)
-                final_balance += pos['qty'] * exit_price * 0.9985
-                pnl = ((exit_price / pos['entry_price']) - 1) * 100
+                final_balance += pos['qty'] * exit_price * 0.999
+                pnl = ((exit_price / pos['entry_price']) * 0.998001 - 1.0) * 100
                 trades.append({'pair': s, 'pnl': pnl, 'reason': 'EOD', 'entry': pos['entry_price'], 'exit': exit_price, 'setup': pos.get('setup', 'Unknown'), 'hold_time': len(np_data[s]['close']) - 1 - pos['time']})
 
         self.trades = trades

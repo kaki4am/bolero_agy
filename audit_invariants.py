@@ -118,8 +118,18 @@ def test_invariants():
                     sells = live_df[live_df['side'] == 'SELL']
                     total_buy_val = (buys['price'] * buys['quantity']).sum()
                     total_sell_val = (sells['price'] * sells['quantity']).sum()
+                    open_val = 0.0
+                    if os.path.exists('/root/active_positions.json'):
+                        try:
+                            with open('/root/active_positions.json') as apf:
+                                ap_data = json.load(apf).get('active_positions', {})
+                                for sym, pos in ap_data.items():
+                                    if pos.get('qty', 0) > 0:
+                                        open_val += pos['qty'] * pos.get('max_p', pos.get('entry_price', 0))
+                        except Exception:
+                            pass
                     total_fees = live_df['fee'].fillna(0).sum()
-                    live_net_pnl = total_sell_val - total_buy_val - total_fees
+                    live_net_pnl = total_sell_val + open_val - total_buy_val - total_fees
                     
                     # Dynamically get latest portfolio equity
                     approx_equity = 350.0

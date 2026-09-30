@@ -5,11 +5,11 @@ Produces a structured reflection diagnostic report (reflection_autopsy.json & re
 used by the Nightly AI Committee to self-diagnose and fix strategy leaks.
 """
 
-import sqlite3
 import json
 import os
 import pandas as pd
 from datetime import datetime, timedelta
+from trading_utils import get_db_connection, atomic_json_dump, get_binance_client
 
 DB_PATH = '/root/trading_bot.db'
 POSITIONS_PATH = '/root/active_positions.json'
@@ -21,12 +21,20 @@ def run_reflection():
     if not os.path.exists(DB_PATH):
         return {"error": "Database not found"}
 
-    conn = sqlite3.connect(DB_PATH)
-    trades_df = pd.read_sql_query("SELECT * FROM trades ORDER BY timestamp ASC", conn)
-    conn.close()
+    with get_db_connection(DB_PATH) as conn:
+        trades_df = pd.read_sql_query("SELECT * FROM trades ORDER BY timestamp ASC", conn)
 
     if trades_df.empty:
         return {"status": "No trades to reflect upon"}
+
+    # Determine BNB/USDT price for accurate fee conversion
+    bnb_price = 600.0
+    try:
+        client = get_binance_client()
+        ticker = client.get_symbol_ticker(symbol="BNBUSDT")
+        bnb_price = float(ticker['price'])
+    except Exception:
+        pass
 
     # Pair round-trip trades with full FIFO fee accounting
     symbol_inventory = {}
@@ -37,7 +45,18 @@ def run_reflection():
         side = row['side']
         price = float(row['price'])
         amount = float(row['quantity'])
-        fee = float(row['fee']) if row['fee'] is not None else 0.0
+        raw_fee = float(row['fee']) if row['fee'] is not None else 0.0
+        fee_asset = row.get('fee_asset') or 'USDT'
+        
+        # Convert fee to USDT
+        if fee_asset == 'BNB':
+            fee = raw_fee * bnb_price
+        elif fee_asset != 'USDT' and fee_asset:
+            fee = raw_fee * price
+        else:
+            fee = raw_fee
+        fee = min(fee, price * amount * 0.01)
+
         ts = row['timestamp']
 
         if sym not in symbol_inventory:
@@ -69,9 +88,10 @@ def run_reflection():
 
             actual_sold = amount - rem_amt
             if actual_sold > 0 and cost_basis > 0:
+                sell_fee = fee * (actual_sold / amount) if amount > 0 else 0.0
                 proceeds = actual_sold * price
                 gross_pnl = proceeds - cost_basis
-                net_pnl = gross_pnl - fee - buy_fee
+                net_pnl = gross_pnl - sell_fee - buy_fee
                 pnl_pct = (proceeds / cost_basis - 1.0) * 100
                 entry_dt = pd.to_datetime(entry_ts)
                 exit_dt = pd.to_datetime(ts)
@@ -85,7 +105,7 @@ def run_reflection():
                     'cost': cost_basis,
                     'proceeds': proceeds,
                     'gross_pnl': gross_pnl,
-                    'fees': fee + buy_fee,
+                    'fees': sell_fee + buy_fee,
                     'net_pnl': net_pnl,
                     'pnl_pct': pnl_pct
                 })
@@ -269,8 +289,7 @@ def apply_defensive_fixes(report):
             new_blacklist.append(pair)
 
     if new_blacklist:
-        with open(restricted_path, 'w') as rf:
-            json.dump(sorted(list(restricted)), rf, indent=4)
+        atomic_json_dump(sorted(list(restricted)), restricted_path)
         actions_taken.append(f"Auto-blacklisted {len(new_blacklist)} chronic bleeding pairs: {', '.join(new_blacklist)}")
 
     # 2. If in CAPITAL_PRESERVATION, enforce safe risk parameters
@@ -290,8 +309,7 @@ def apply_defensive_fixes(report):
                     cfg['PROFIT_LOCK_PCT'] = 0.0075
                     modified = True
                 if modified:
-                    with open(CONFIG_PATH, 'w') as cf:
-                        json.dump(cfg, cf, indent=4)
+                    atomic_json_dump(cfg, CONFIG_PATH)
                     actions_taken.append("Enforced conservative risk caps in config.json (MAX_RISK=18%, BASE_RISK=1.5%, PROFIT_LOCK=0.75%)")
             except Exception as e:
                 print(f"Error updating config in defensive fixes: {e}")

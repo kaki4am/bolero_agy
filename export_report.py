@@ -1,8 +1,7 @@
-import sqlite3
-import json
 import re
 import pandas as pd
 from datetime import datetime, timedelta
+from trading_utils import get_db_connection, atomic_json_dump, get_binance_client
 
 def get_current_version():
     """Read the active strategy version (e.g. 'V160') from GEMINI.md."""
@@ -16,11 +15,18 @@ def get_current_version():
     return 'unknown'
 
 def export_report():
-    conn = sqlite3.connect('trading_bot.db')
+    with get_db_connection('trading_bot.db') as conn:
+        # Load ALL trades to perform full FIFO cycle matching (including buys > 24h ago)
+        trades_df = pd.read_sql_query("SELECT * FROM trades ORDER BY timestamp ASC", conn)
     
-    # Load ALL trades to perform full FIFO cycle matching (including buys > 24h ago)
-    trades_df = pd.read_sql_query("SELECT * FROM trades ORDER BY timestamp ASC", conn)
-    
+    bnb_price = 600.0
+    try:
+        client = get_binance_client()
+        ticker = client.get_symbol_ticker(symbol="BNBUSDT")
+        bnb_price = float(ticker['price'])
+    except Exception:
+        pass
+
     realized_trades = []
     
     # Group by pair to find completed cycles
@@ -29,17 +35,27 @@ def export_report():
         buys = []
         
         for _, row in pair_trades.iterrows():
+            raw_fee = float(row['fee']) if row['fee'] is not None else 0.0
+            fee_asset = row.get('fee_asset') or 'USDT'
+            if fee_asset == 'BNB':
+                fee_usdt = raw_fee * bnb_price
+            elif fee_asset != 'USDT' and fee_asset:
+                fee_usdt = raw_fee * float(row['price'])
+            else:
+                fee_usdt = raw_fee
+            fee_usdt = min(fee_usdt, float(row['price']) * float(row['quantity']) * 0.01)
+
             if row['side'] == 'BUY':
                 buys.append({
                     'qty': row['quantity'],
                     'price': row['price'],
-                    'fee': float(row['fee']) if row['fee'] is not None else 0.0,
+                    'fee': fee_usdt,
                     'timestamp': pd.to_datetime(row['timestamp'])
                 })
             elif row['side'] == 'SELL':
                 sell_qty = row['quantity']
                 sell_price = row['price']
-                sell_fee = float(row['fee']) if row['fee'] is not None else 0.0
+                sell_fee = fee_usdt
                 sell_ts = pd.to_datetime(row['timestamp'])
                 
                 cycle_qty = 0
@@ -115,10 +131,9 @@ def export_report():
 
     # Get last 24h failed trades
     yesterday_str = yesterday.strftime('%Y-%m-%d %H:%M:%S')
-    failed_df = pd.read_sql_query(f"SELECT * FROM failed_trades WHERE timestamp > '{yesterday_str}'", conn)
-    
-    # Get total trades (buys + sells) in the last 24h for reporting count
-    trades_count_df = pd.read_sql_query(f"SELECT * FROM trades WHERE timestamp > '{yesterday_str}'", conn)
+    with get_db_connection('trading_bot.db') as conn:
+        failed_df = pd.read_sql_query(f"SELECT * FROM failed_trades WHERE timestamp > '{yesterday_str}'", conn)
+        trades_count_df = pd.read_sql_query(f"SELECT * FROM trades WHERE timestamp > '{yesterday_str}'", conn)
 
     report = {
         "date": datetime.now().strftime('%Y-%m-%d'),
@@ -135,10 +150,7 @@ def export_report():
         "failures": failed_df.to_dict(orient='records')
     }
     
-    with open('daily_report.json', 'w') as f:
-        json.dump(report, f, indent=4)
-    
-    conn.close()
+    atomic_json_dump(report, 'daily_report.json')
 
 if __name__ == "__main__":
     export_report()

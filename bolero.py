@@ -28,36 +28,60 @@ def main():
             print(term.bold_red("    ║  ") + term.bold_yellow("💃 B O L E R O") + term.bold_red("              ║"))
             print(term.bold_red("    ╚══════════════════════════════╝"))
             print("")
-            print("  Use " + term.bold("UP/DOWN") + " to select, " + term.bold("ENTER") + " to open.\n")
+            print("  Use " + term.bold("UP/DOWN / [0-6]") + " to select, " + term.bold("ENTER") + " to open.\n")
 
             # Options list
             for idx, opt in enumerate(options):
+                num_tag = f"[{idx}] " if idx < exit_idx else "[Q] "
                 if idx == selected_idx:
-                    print(term.black_on_red(f" ➔  {opt} "))
+                    print(term.black_on_red(f" ➔  {num_tag}{opt} "))
                 else:
-                    print(f"    {opt} ")
+                    print(f"    {term.dim}{num_tag}{term.normal}{opt} ")
 
             # Footer
             print(term.move_xy(0, term.height - 2) + term.red("Press Q or choose Exit to close. 💃"))
 
             # Read keyboard input
             key = term.inkey()
+            trigger_action = False
+
             if key.code == term.KEY_UP:
                 selected_idx = (selected_idx - 1) % len(options)
             elif key.code == term.KEY_DOWN:
                 selected_idx = (selected_idx + 1) % len(options)
+            elif key.isdigit() and int(key) < len(options) - 1:
+                selected_idx = int(key)
+                trigger_action = True
             elif key.code == term.KEY_ENTER or key == '\n' or key == '\r':
+                trigger_action = True
+            elif key.lower() == 'q' or key.code == term.KEY_ESCAPE:
+                break
+
+            if trigger_action:
                 if selected_idx == exit_idx:  # Exit option
                     break
                 
                 print(term.clear)
                 try:
-                    if selected_idx == 0:
-                        # Live Trading Bot dashboard
-                        subprocess.run(["/root/venv/bin/python", "/root/dashboard.py"])
-                    elif selected_idx == 1:
-                        # Active Positions Monitor
-                        subprocess.run(["/root/venv/bin/python", "/root/positions_dashboard.py"])
+                    if selected_idx in (0, 1):
+                        target = "dashboard" if selected_idx == 0 else "positions"
+                        while target:
+                            print(term.home + term.clear)
+                            if target == "dashboard":
+                                import dashboard
+                                next_screen = dashboard.main()
+                                if next_screen == "positions":
+                                    target = "positions"
+                                else:
+                                    target = None
+                            elif target == "positions":
+                                import positions_dashboard
+                                next_screen = positions_dashboard.main()
+                                if next_screen == "dashboard":
+                                    target = "dashboard"
+                                else:
+                                    target = None
+
                     elif selected_idx == 2:
                         # Tuner grid search dashboard
                         subprocess.run(["/root/venv/bin/python", "/root/backtest_dashboard.py"])
@@ -79,15 +103,16 @@ def main():
                             term.inkey(timeout=3)
                     elif selected_idx == 5:
                         # View blacklist
-                        subprocess.run(["/root/venv/bin/python", "/root/view_blacklist.py"])
+                        import view_blacklist
+                        view_blacklist.main()
                     elif selected_idx == 6:
                         # Forecast View
-                        subprocess.run(["/root/venv/bin/python", "/root/forecast_dashboard.py"])
+                        import forecast_dashboard
+                        forecast_dashboard.main()
                 except Exception as e:
                     print(term.red(f"Error executing action: {e}"))
                     term.inkey(timeout=3)
-            elif key.lower() == 'q':
-                break
+
     print(term.clear + term.home, end='')
 
 if __name__ == "__main__":

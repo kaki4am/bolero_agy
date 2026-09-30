@@ -1,14 +1,15 @@
 {
-    "RISK_MULTIPLIER": 0.85,
-    "SL_MULT_OFFSET": -0.1,
-    "VOL_SPIKE_MULT_OFFSET": 0.1,
-    "PORTFOLIO_EJECT_OFFSET": 0.25,
+    "RISK_MULTIPLIER": 1.0,
+    "SL_MULT_OFFSET": 0.0,
+    "VOL_SPIKE_MULT_OFFSET": 0.0,
+    "PORTFOLIO_EJECT_OFFSET": 0.0,
     "blacklist_add": [],
     "whitelist_add": [
+        "QNTUSDT",
+        "MOVRUSDT",
         "NEARUSDT",
-        "CREAMUSDT",
-        "ONDOUSDT"
+        "ZECUSDT"
     ],
-    "rationale": "With BTC dipping -1.13% amid macro yield pressure and r/CryptoCurrency sentiment leaning cautious with altcoin fatigue, risk exposure is reduced to 0.85 with tightened stops while tracking high-volume decoupling momentum in NEAR and CREAM.",
+    "rationale": "With BTC consolidating flat at -0.51% and Reddit r/CryptoCurrency sentiment leaning cautious and skeptical over cycle durability, baseline risk parameters are maintained while whitelisting decoupled momentum breakout candidates QNT, MOVR, NEAR, and ZEC.",
     "confidence": 0.88
 }

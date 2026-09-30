@@ -11,7 +11,7 @@ import warnings
 from dotenv import load_dotenv
 from binance import AsyncClient, BinanceSocketManager
 
-from trading_utils import init_db, log_trade, log_failed_trade
+from trading_utils import init_db, log_trade, log_failed_trade, atomic_json_dump
 
 load_dotenv()
 
@@ -108,8 +108,7 @@ class TradingBot:
 
     def save_restricted_pairs(self):
         try:
-            with open('restricted_pairs.json', 'w') as f:
-                json.dump(list(self.restricted_pairs), f)
+            atomic_json_dump(list(self.restricted_pairs), 'restricted_pairs.json')
         except Exception as e:
             print(f"Error saving restricted_pairs.json: {e}")
 
@@ -132,10 +131,7 @@ class TradingBot:
                 'last_trade_time': self.last_trade_time,
                 'pair_last_loss': self._pair_last_loss
             }
-            tmp_path = '/root/active_positions.json.tmp'
-            with open(tmp_path, 'w') as f:
-                json.dump(payload, f, indent=4)
-            os.replace(tmp_path, '/root/active_positions.json')
+            atomic_json_dump(payload, '/root/active_positions.json')
         except Exception as e:
             print(f"Error saving active positions: {e}")
 
@@ -364,14 +360,16 @@ class TradingBot:
         import re
         if not re.match(r'^[A-Z0-9]{2,10}USDT$', symbol):
             return False
+        if symbol not in self.exchange_info or not self.exchange_info[symbol].get('isAllowed', False):
+            return False
         try:
             await self.client.create_test_order(symbol=symbol, side='BUY', type='MARKET', quoteOrderQty=10.1)
             return True
         except Exception as e:
             err = str(e).lower()
-            if "-2010" in err or "not permitted" in err or "illegal characters" in err:
-                return False
-            return True
+            if "-2010" in err:
+                return True
+            return False
 
     async def fetch_exchange_info(self):
         try:
@@ -402,11 +400,11 @@ class TradingBot:
                 btc_daily_range_pct = (high_24h - low_24h) / low_24h * 100
             else:
                 btc_daily_range_pct = 1.0
-            self.market_trend['btc_daily_range_pct'] = btc_daily_range_pct
 
             self.market_trend = {
                 'btc_4h_return': btc_ret_4h,
-                'btc_24h_return': btc_ret_24h
+                'btc_24h_return': btc_ret_24h,
+                'btc_daily_range_pct': btc_daily_range_pct
             }
             print("--- Market Status Update (Strategy V160 - Volatile Momentum & Decoupling Squeeze) ---")
             print(f"BTC 4h Return: {btc_ret_4h:+.2f}% | 24h: {btc_ret_24h:+.2f}%")
@@ -544,9 +542,10 @@ class TradingBot:
                                 fallback_time = dt.timestamp()
                         except: pass
                         
+                        fallback_sl_pct = self.config.get('SL_MIN_PCT', 0.06)
                         self.positions[pair] = {
                             'entries': 1, 'entry_price': r['price'], 'qty': actual_qty,
-                            'max_p': r['price'], 'sl': r['price'] * 0.98, 'time': fallback_time
+                            'max_p': r['price'], 'sl': r['price'] * (1.0 - fallback_sl_pct), 'time': fallback_time
                         }
                         print(f"Synced {pair} from DB (no cache). Fallback Entry: {r['price']}, Qty: {actual_qty}")
             self.save_active_positions()
@@ -685,7 +684,6 @@ class TradingBot:
 
     async def check_portfolio_guard(self):
         active = [p for p in self.positions if self.positions[p]['entries'] > 0]
-        if not active: return
         total_unrealized_usd = 0.0
         
         # Calculate current equity exactly: cash + current value of positions
@@ -711,8 +709,8 @@ class TradingBot:
         
         drawdown_1h = 0.0
         if len(self.equity_history) > 1:
-            old_equity = self.equity_history[0][1]
-            drawdown_1h = (old_equity - current_equity) / old_equity
+            peak_equity = max(e[1] for e in self.equity_history)
+            drawdown_1h = (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
             
         circuit_breaker_dd = self.config.get('CIRCUIT_BREAKER_1H_DD', 0.035)
         if drawdown_1h > circuit_breaker_dd or len([t for t in self.failed_trades_history if time.time() - t <= 3600]) >= 3:
@@ -720,6 +718,7 @@ class TradingBot:
                 print(f"🛑 CIRCUIT BREAKER TRIPPED! Drawdown: {drawdown_1h*100:.2f}%, Fails: {len([t for t in self.failed_trades_history if time.time() - t <= 3600])}")
                 self.circuit_breaker_until = time.time() + 4 * 3600
         
+        if not active: return
         pnl_pct = (total_unrealized_usd / current_equity) * 100 if current_equity > 0 else 0
         reason = None
         if pnl_pct <= self.config.get('PORTFOLIO_EJECT', -5.0): reason = "GLOBAL_EJECT"
@@ -948,7 +947,14 @@ class TradingBot:
                         self.failed_trades_history.append(time.time())
                         # clean up old ones
                         self.failed_trades_history = [t for t in self.failed_trades_history if time.time() - t <= 3600]
-                    self.positions[pair] = {'entries': 0, 'qty': 0.0}
+                    old_qty = self.positions[pair].get('qty', eq)
+                    remaining_qty = max(0.0, old_qty - eq)
+                    min_notional = self.exchange_info.get(pair, {}).get('minNotional', 5.0)
+                    if remaining_qty * ep > min_notional:
+                        self.positions[pair]['qty'] = remaining_qty
+                        print(f"⚠️ Partial fill on {pair}: sold {eq}, remaining {remaining_qty}")
+                    else:
+                        self.positions[pair] = {'entries': 0, 'qty': 0.0}
                 self.save_active_positions()
                 
                 # Dynamic update of last_total_equity to reflect current assets + cash
@@ -969,13 +975,15 @@ class TradingBot:
                 return True
             except Exception as e:
                 err = str(e).lower()
-                if "-2010" in err or "not permitted" in err:
+                if "not permitted" in err or "illegal characters" in err:
                     self.restricted_pairs.add(pair)
                     self.save_restricted_pairs()
                     if pair in self.tracked_pairs: self.tracked_pairs.remove(pair)
                     if side == 'SELL':
                         self.positions[pair] = {'entries': 0, 'qty': 0.0}
                         self.save_active_positions()
+                elif "-2010" in err:
+                    print(f"⚠️ Insufficient balance on {pair} ({side}): {err}")
                 await asyncio.to_thread(log_failed_trade, pair, err)
                 return False
 
