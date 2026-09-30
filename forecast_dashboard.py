@@ -1,20 +1,22 @@
 from blessed import Terminal
 from trading_utils import get_account_snapshot_data
+from daily_signal_brief import get_performance_stats, calculate_capital_projections
 
 def main():
     term = Terminal()
     print(term.home + term.clear)
-    print(term.bold_green("    💸 Financial View (30-Day PnL)"))
-    print(term.bold_green("    ═══════════════════════════════\n"))
+    print(term.bold_green("    💸 Financial View (30-Day PnL & Multi-Year Forecast)"))
+    print(term.bold_green("    ═════════════════════════════════════════════════════\n"))
     
-    print(term.yellow("  Fetching live API data (this takes a moment)..."))
+    print(term.yellow("  Fetching live API & performance data (this takes a moment)..."))
     
     try:
         data = get_account_snapshot_data()
+        stats = get_performance_stats()
         
         print(term.clear + term.home)
-        print(term.bold_green("    💸 Financial View (30-Day PnL)"))
-        print(term.bold_green("    ═══════════════════════════════\n"))
+        print(term.bold_green("    💸 Financial View (30-Day PnL & Multi-Year Forecast)"))
+        print(term.bold_green("    ═════════════════════════════════════════════════════\n"))
         
         if not data:
             print("  No snapshot data available from Binance.")
@@ -38,19 +40,25 @@ def main():
                 stretched_vals.append(vals[-1])
             
             if stretched_vals:
-                print(asciichartpy.plot(stretched_vals, {'height': 12}))
+                print(asciichartpy.plot(stretched_vals, {'height': 10}))
                 print()
             
             current_eq = data['current_total']
-            monthly_yield = data['pct_pnl'] / 100.0
             
-            print(term.bold_yellow("  [ 🔮 Future Projections (Compounding at current 30-day rate) ]"))
-            print(f"    Current Capital: ${current_eq:,.2f}  |  30-Day Rate: {monthly_yield*100:.2f}%\n")
+            # Use deterministic Signal briefing engine as single source of truth
+            projections_data, formatted_block = calculate_capital_projections(current_eq, stats)
             
-            for months, label in [(1, "30 Days"), (3, "90 Days"), (6, "6 Months"), (12, "1 Year")]:
-                projected = current_eq * ((1 + monthly_yield) ** months)
-                profit = projected - current_eq
-                print(f"    {label}: {term.bold_green('$' + format(projected, ',.2f'))} (+${profit:,.2f})")
+            print(term.bold_yellow("  [ 🔭 Long-Term Capital Projections (Signal Source of Truth) ]"))
+            print(f"    Starting Baseline: ${current_eq:,.2f} (Live Spot Equity)\n")
+            
+            for line in formatted_block.split('\n')[2:]:
+                if line.startswith('•'):
+                    print("  " + term.bold_yellow(line))
+                elif any(line.strip().startswith(h) for h in ['1 Year:', '2 Years:', '3 Years:', '5 Years:', '10 Years:']):
+                    parts = line.strip().split(':', 1)
+                    print(f"    {parts[0]:<10}: {term.bold_green(parts[1].strip())}")
+                else:
+                    print("  " + line)
                 
     except Exception as e:
         import traceback
