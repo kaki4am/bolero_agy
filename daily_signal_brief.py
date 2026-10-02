@@ -335,17 +335,27 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
     r30 = pnl_30d / equity
     cagr_30 = ((1.0 + r30) ** 12.0) - 1.0 if r30 > -1.0 else 0.0
 
-    # 2. Active Strategy normalized monthly rate & tempered CAGR
+    # 2. Active Strategy raw untempered annual run-rate
     r_active_raw = pnl_active / equity
-    # Tempered realistic cycle CAGR (15% monthly to account for bear markets/consolidation):
-    cagr_active_tempered = ((1.0 + 0.15) ** 12.0) - 1.0
+    periods_active = 365.25 / max(days_active, 0.01)
+    try:
+        if r_active_raw > -1.0:
+            cagr_active = ((1.0 + r_active_raw) ** periods_active) - 1.0
+        else:
+            cagr_active = -1.0
+    except OverflowError:
+        cagr_active = 1e12
 
     # 3. 7-day rate & annual run-rate
     r7 = pnl_7d / equity
     cagr_7 = ((1.0 + r7) ** 52.14) - 1.0 if r7 > -1.0 else 0.0
 
     def fmt_currency(val: float) -> str:
-        if val >= 1e12:
+        if val <= 0:
+            return "$0"
+        elif val >= 1e15:
+            return f"${val/1e12:,.0f}T"
+        elif val >= 1e12:
             return f"${val/1e12:,.2f}T"
         elif val >= 1e9:
             return f"${val/1e9:,.2f}B"
@@ -356,10 +366,18 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
 
     # Project years [1, 2, 3, 5, 10] across all methods
     years = [1, 2, 3, 5, 10]
-    proj_30d = {y: equity * ((1.0 + cagr_30) ** y) for y in years}
-    proj_active = {y: equity * ((1.0 + cagr_active_tempered) ** y) for y in years}
+    proj_30d = {y: max(equity * ((1.0 + cagr_30) ** y), 0.0) for y in years}
+    
+    proj_active = {}
+    for y in years:
+        try:
+            val = equity * ((1.0 + cagr_active) ** y)
+        except OverflowError:
+            val = 1e18
+        proj_active[y] = max(val, 0.0)
+        
     cagr_7_effective = min(cagr_7, 10.0)
-    proj_7d = {y: equity * ((1.0 + cagr_7_effective) ** y) for y in years}
+    proj_7d = {y: max(equity * ((1.0 + cagr_7_effective) ** y), 0.0) for y in years}
 
     projections_data = {
         'starting_equity': equity,
@@ -370,16 +388,17 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
         'rate_active_raw': r_active_raw,
         'days_active': days_active,
         'days_active_str': days_active_str,
-        'cagr_active_tempered': cagr_active_tempered,
+        'cagr_active': cagr_active,
         'proj_active': {y: fmt_currency(v) for y, v in proj_active.items()},
         # Backward compatibility aliases
+        'cagr_active_tempered': cagr_active,
         'rate_regime_raw': r_active_raw,
         'days_regime': days_active,
-        'cagr_regime_tempered': cagr_active_tempered,
+        'cagr_regime_tempered': cagr_active,
         'proj_regime': {y: fmt_currency(v) for y, v in proj_active.items()},
         'rate_v160_raw': r_active_raw,
         'days_v160': days_active,
-        'cagr_v160_tempered': cagr_active_tempered,
+        'cagr_v160_tempered': cagr_active,
         'proj_v160': {y: fmt_currency(v) for y, v in proj_active.items()},
         'rate_7d': r7,
         'cagr_7': cagr_7_effective,
@@ -407,7 +426,7 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
         f"  5 Years:  {fmt_currency(proj_30d[5])}",
         f"  10 Years: {fmt_currency(proj_30d[10])}",
         "",
-        f"• {active_version} DECOUPLED SQUEEZE ({fmt_pct(r_active_raw)} in {days_active_str} | Tempered 15%/mo):",
+        f"• {active_version} DECOUPLED SQUEEZE ({fmt_pct(r_active_raw)} in {days_active_str} | Annualized Run-Rate):",
         f"  1 Year:   {fmt_currency(proj_active[1])}",
         f"  2 Years:  {fmt_currency(proj_active[2])}",
         f"  3 Years:  {fmt_currency(proj_active[3])}",
