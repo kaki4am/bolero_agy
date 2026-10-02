@@ -89,6 +89,42 @@ def get_live_account_data():
         
     return data
 
+def get_active_strategy_info():
+    """Dynamically determine the active strategy version and its deployment timestamp."""
+    version = 'V161'
+    try:
+        with open('/root/GEMINI.md', 'r') as f:
+            m = re.search(r'Strategy\s+(V\d+)', f.read())
+            if m:
+                version = m.group(1)
+    except Exception:
+        pass
+
+    start_ts = None
+    try:
+        with open('/root/version_history_log.json', 'r') as f:
+            vlog = json.load(f)
+        matching_dates = [d for d, v in vlog.items() if v == version]
+        if matching_dates:
+            matching_dates.sort()
+            start_ts = pd.to_datetime(matching_dates[0])
+    except Exception:
+        pass
+
+    try:
+        cmd = f"git -C /root log -S 'Current Active Strategy ({version})' --reverse --format='%ci' GEMINI.md | head -n 1"
+        res = subprocess.check_output(cmd, shell=True, text=True).strip()
+        if res:
+            parts = res.split()
+            start_ts = pd.to_datetime(f"{parts[0]} {parts[1]}")
+    except Exception:
+        pass
+
+    if start_ts is None:
+        start_ts = pd.to_datetime('2026-10-02 03:31:15')
+
+    return version, start_ts
+
 def get_performance_stats():
     """Calculate realized PnL and trade metrics for last 24h and 7d from SQLite."""
     stats = {
@@ -106,16 +142,23 @@ def get_performance_stats():
         'fees_30d': 0.0,
         'trades_30d': 0,
         'win_rate_30d': 0.0,
+        'active_version': 'V161',
+        'pnl_active': 0.0,
+        'fees_active': 0.0,
+        'trades_active': 0,
+        'win_rate_active': 0.0,
+        'days_active': 0.3,
+        'days_active_str': '0.3d',
         'pnl_regime': 0.0,
         'fees_regime': 0.0,
         'trades_regime': 0,
         'win_rate_regime': 0.0,
-        'days_regime': 11.0,
+        'days_regime': 0.3,
         'pnl_v160': 0.0,
         'fees_v160': 0.0,
         'trades_v160': 0,
         'win_rate_v160': 0.0,
-        'days_v160': 11.0,
+        'days_v160': 0.3,
         'recent_exits': []
     }
     
@@ -233,21 +276,29 @@ def get_performance_stats():
             w30 = len(sub30[sub30['net'] > 0])
             stats['win_rate_30d'] = (w30 / len(sub30) * 100.0)
 
-        # Since Decoupled Squeeze regime inception (Sep 21, 2026 11:28:35 UTC - V160+)
-        regime_start = pd.to_datetime('2026-09-21 11:28:35')
-        sub_regime = rdf[rdf['sell_ts'] >= regime_start]
-        stats['days_regime'] = max((now - regime_start).total_seconds() / 86400.0, 1.0)
-        stats['days_v160'] = stats['days_regime']
-        if not sub_regime.empty:
-            stats['pnl_regime'] = float(sub_regime['net'].sum())
-            stats['fees_regime'] = float(sub_regime['fees'].sum())
-            stats['trades_regime'] = len(sub_regime)
-            w_regime = len(sub_regime[sub_regime['net'] > 0])
-            stats['win_rate_regime'] = (w_regime / len(sub_regime) * 100.0)
-            stats['pnl_v160'] = stats['pnl_regime']
-            stats['fees_v160'] = stats['fees_regime']
-            stats['trades_v160'] = stats['trades_regime']
-            stats['win_rate_v160'] = stats['win_rate_regime']
+        # Active Strategy Version performance (tracked dynamically since deployment)
+        active_version, version_start = get_active_strategy_info()
+        stats['active_version'] = active_version
+        sub_active = rdf[rdf['sell_ts'] >= version_start]
+        days_active = max((now - version_start).total_seconds() / 86400.0, 0.01)
+        stats['days_active'] = days_active
+        stats['days_active_str'] = f"{days_active:.1f}d" if days_active < 1.0 else f"{days_active:.0f}d"
+        if not sub_active.empty:
+            stats['pnl_active'] = float(sub_active['net'].sum())
+            stats['fees_active'] = float(sub_active['fees'].sum())
+            stats['trades_active'] = len(sub_active)
+            w_active = len(sub_active[sub_active['net'] > 0])
+            stats['win_rate_active'] = (w_active / len(sub_active) * 100.0)
+        else:
+            stats['pnl_active'] = 0.0
+            stats['fees_active'] = 0.0
+            stats['trades_active'] = 0
+            stats['win_rate_active'] = 0.0
+        # Backward compatibility aliases
+        stats['pnl_regime'] = stats['pnl_active']
+        stats['days_regime'] = days_active
+        stats['pnl_v160'] = stats['pnl_active']
+        stats['days_v160'] = days_active
             
         # Recent 5 exits
         for _, r in rdf.sort_values('sell_ts', ascending=False).head(5).iterrows():
@@ -269,23 +320,25 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
     Computes deterministic multi-year compounding projections (1, 2, 3, 5, 10 years)
     based on empirical Bolero performance across:
     1. 30-Day Sustained Pace (full cycle baseline)
-    2. Decoupled Squeeze Regime (since Sep 21 inception)
+    2. Active Strategy Version (since deployment)
     3. 7-Day Sprint Pace
     """
     equity = max(float(total_equity), 1.0)
     pnl_30d = stats.get('pnl_30d', 0.0)
-    pnl_regime = stats.get('pnl_regime', stats.get('pnl_v160', 0.0))
-    days_regime = stats.get('days_regime', stats.get('days_v160', 11.0))
+    active_version = stats.get('active_version', 'V161')
+    pnl_active = stats.get('pnl_active', stats.get('pnl_regime', stats.get('pnl_v160', 0.0)))
+    days_active = stats.get('days_active', stats.get('days_regime', 0.3))
+    days_active_str = stats.get('days_active_str', f"{days_active:.1f}d" if days_active < 1.0 else f"{days_active:.0f}d")
     pnl_7d = stats.get('pnl_7d', 0.0)
 
     # 1. 30-day rate & CAGR
     r30 = pnl_30d / equity
     cagr_30 = ((1.0 + r30) ** 12.0) - 1.0 if r30 > -1.0 else 0.0
 
-    # 2. Decoupled Squeeze regime normalized monthly rate & tempered CAGR (since Sep 21 inception)
-    r_regime_raw = pnl_regime / equity
+    # 2. Active Strategy normalized monthly rate & tempered CAGR
+    r_active_raw = pnl_active / equity
     # Tempered realistic cycle CAGR (15% monthly to account for bear markets/consolidation):
-    cagr_regime_tempered = ((1.0 + 0.15) ** 12.0) - 1.0
+    cagr_active_tempered = ((1.0 + 0.15) ** 12.0) - 1.0
 
     # 3. 7-day rate & annual run-rate
     r7 = pnl_7d / equity
@@ -304,7 +357,7 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
     # Project years [1, 2, 3, 5, 10] across all methods
     years = [1, 2, 3, 5, 10]
     proj_30d = {y: equity * ((1.0 + cagr_30) ** y) for y in years}
-    proj_regime = {y: equity * ((1.0 + cagr_regime_tempered) ** y) for y in years}
+    proj_active = {y: equity * ((1.0 + cagr_active_tempered) ** y) for y in years}
     cagr_7_effective = min(cagr_7, 10.0)
     proj_7d = {y: equity * ((1.0 + cagr_7_effective) ** y) for y in years}
 
@@ -313,40 +366,55 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
         'rate_30d': r30,
         'cagr_30d': cagr_30,
         'proj_30d': {y: fmt_currency(v) for y, v in proj_30d.items()},
-        'rate_regime_raw': r_regime_raw,
-        'days_regime': days_regime,
-        'cagr_regime_tempered': cagr_regime_tempered,
-        'proj_regime': {y: fmt_currency(v) for y, v in proj_regime.items()},
+        'active_version': active_version,
+        'rate_active_raw': r_active_raw,
+        'days_active': days_active,
+        'days_active_str': days_active_str,
+        'cagr_active_tempered': cagr_active_tempered,
+        'proj_active': {y: fmt_currency(v) for y, v in proj_active.items()},
         # Backward compatibility aliases
-        'rate_v160_raw': r_regime_raw,
-        'days_v160': days_regime,
-        'cagr_v160_tempered': cagr_regime_tempered,
-        'proj_v160': {y: fmt_currency(v) for y, v in proj_regime.items()},
+        'rate_regime_raw': r_active_raw,
+        'days_regime': days_active,
+        'cagr_regime_tempered': cagr_active_tempered,
+        'proj_regime': {y: fmt_currency(v) for y, v in proj_active.items()},
+        'rate_v160_raw': r_active_raw,
+        'days_v160': days_active,
+        'cagr_v160_tempered': cagr_active_tempered,
+        'proj_v160': {y: fmt_currency(v) for y, v in proj_active.items()},
         'rate_7d': r7,
         'cagr_7': cagr_7_effective,
         'proj_7d': {y: fmt_currency(v) for y, v in proj_7d.items()}
     }
+
+    def fmt_pct(val: float) -> str:
+        pct = val * 100.0
+        if abs(pct) < 0.05:
+            return "+0.0%"
+        elif pct > 0:
+            return f"+{pct:.1f}%"
+        else:
+            return f"-{abs(pct):.1f}%"
 
     # Format strictly for Signal & Email (no asterisks, clean bullets, uppercase headers, spyglass emoji)
     block_lines = [
         "🔭 LONG-TERM CAPITAL PROJECTIONS",
         f"Starting Baseline: ${equity:,.2f} (Live Spot Equity)",
         "",
-        f"• 30-DAY SUSTAINED PACE (+{r30*100:.1f}%/mo | +{cagr_30*100:.1f}% Annual CAGR):",
+        f"• 30-DAY SUSTAINED PACE ({fmt_pct(r30)}/mo | +{cagr_30*100:.1f}% Annual CAGR):",
         f"  1 Year:   {fmt_currency(proj_30d[1])}",
         f"  2 Years:  {fmt_currency(proj_30d[2])}",
         f"  3 Years:  {fmt_currency(proj_30d[3])}",
         f"  5 Years:  {fmt_currency(proj_30d[5])}",
         f"  10 Years: {fmt_currency(proj_30d[10])}",
         "",
-        f"• DECOUPLED SQUEEZE REGIME (+{r_regime_raw*100:.1f}% in {days_regime:.0f}d | Tempered 15%/mo):",
-        f"  1 Year:   {fmt_currency(proj_regime[1])}",
-        f"  2 Years:  {fmt_currency(proj_regime[2])}",
-        f"  3 Years:  {fmt_currency(proj_regime[3])}",
-        f"  5 Years:  {fmt_currency(proj_regime[5])}",
-        f"  10 Years: {fmt_currency(proj_regime[10])}",
+        f"• {active_version} DECOUPLED SQUEEZE ({fmt_pct(r_active_raw)} in {days_active_str} | Tempered 15%/mo):",
+        f"  1 Year:   {fmt_currency(proj_active[1])}",
+        f"  2 Years:  {fmt_currency(proj_active[2])}",
+        f"  3 Years:  {fmt_currency(proj_active[3])}",
+        f"  5 Years:  {fmt_currency(proj_active[5])}",
+        f"  10 Years: {fmt_currency(proj_active[10])}",
         "",
-        f"• 7-DAY SPRINT (+{r7*100:.1f}% in 7d | Annualized Momentum):",
+        f"• 7-DAY SPRINT ({fmt_pct(r7)} in 7d | Annualized Momentum):",
         f"  1 Year:   {fmt_currency(proj_7d[1])}",
         f"  2 Years:  {fmt_currency(proj_7d[2])}",
         f"  3 Years:  {fmt_currency(proj_7d[3])}",
@@ -478,7 +546,7 @@ REQUIRED SECTIONS IN YOUR BRIEF:
 4. 🧠 AI MANAGER INTEL: What the hourly AI Manager discovered (Reddit/market sentiment, risk multiplier, whitelisted narrative coins, confidence).
 5. 🏛️ NIGHTLY COMMITTEE & STRATEGY STATUS: What the committee concluded (diagnosed leaks, reflection stance, whether evolutions passed or were gated/rolled back, active version).
 6. 🔭 24H FORWARD OUTLOOK: 1-2 key things to monitor today (e.g. BTC breakout levels, fee discipline, trailing stops).
-7. 🔭 LONG-TERM CAPITAL PROJECTIONS: Multi-year compounding projections (1, 2, 3, 5, 10 years) based on Bolero's empirical performance across 30-day pace, Decoupled Squeeze regime, and 7-day sprint. Present the projections using the exact figures from RAW SYSTEM DATA under capital_projections.
+7. 🔭 LONG-TERM CAPITAL PROJECTIONS: Multi-year compounding projections (1, 2, 3, 5, 10 years) based on Bolero's empirical performance across 30-day pace, latest active strategy deployment, and 7-day sprint. Present the projections using the exact figures from RAW SYSTEM DATA under capital_projections.
 
 RAW SYSTEM DATA:
 {context_json}
