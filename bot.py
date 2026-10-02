@@ -48,7 +48,7 @@ class TradingBot:
         self.circuit_breaker_until = 0
         self.trade_lock = asyncio.Lock()
         
-        # Strategy V160 - Volatile Momentum & Decoupling Squeeze
+        # Strategy V161 - Volatile Momentum & Decoupling Squeeze
         self.config = {}
         self.base_config = self.config.copy()
         self.load_config()
@@ -406,7 +406,7 @@ class TradingBot:
                 'btc_24h_return': btc_ret_24h,
                 'btc_daily_range_pct': btc_daily_range_pct
             }
-            print("--- Market Status Update (Strategy V160 - Volatile Momentum & Decoupling Squeeze) ---")
+            print("--- Market Status Update (Strategy V161 - Volatile Momentum & Decoupling Squeeze) ---")
             print(f"BTC 4h Return: {btc_ret_4h:+.2f}% | 24h: {btc_ret_24h:+.2f}%")
             
             # Fetch 15m and 1h context data for all pairs in parallel batches
@@ -451,6 +451,15 @@ class TradingBot:
                                 cache_data.update({'ema_20_1h': ema20.iloc[-1]})
                             if ema50 is not None and not ema50.empty:
                                 cache_data.update({'ema_50_1h': ema50.iloc[-1]})
+                                if len(ema50) >= 2:
+                                    cache_data.update({'ema_50_1h_prev': ema50.iloc[-2]})
+                                else:
+                                    cache_data.update({'ema_50_1h_prev': ema50.iloc[-1]})
+                        if len(close_1h) >= 15:
+                            rsi = ta.rsi(close_1h, length=14)
+                            if rsi is not None and not rsi.empty:
+                                cache_data.update({'rsi_1h': rsi.iloc[-1]})
+                        
                         
                     if cache_data:
                         self.ema_cache[p] = cache_data
@@ -713,9 +722,10 @@ class TradingBot:
             drawdown_1h = (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
             
         circuit_breaker_dd = self.config.get('CIRCUIT_BREAKER_1H_DD', 0.035)
-        if drawdown_1h > circuit_breaker_dd or len([t for t in self.failed_trades_history if time.time() - t <= 3600]) >= 3:
+        recent_fails = [t for t in self.failed_trades_history if time.time() - t <= 3600]
+        if drawdown_1h > circuit_breaker_dd or len(recent_fails) >= 3:
             if self.circuit_breaker_until < time.time():
-                print(f"🛑 CIRCUIT BREAKER TRIPPED! Drawdown: {drawdown_1h*100:.2f}%, Fails: {len([t for t in self.failed_trades_history if time.time() - t <= 3600])}")
+                print(f"🛑 CIRCUIT BREAKER TRIPPED! Drawdown: {drawdown_1h*100:.2f}%, Fails: {len(recent_fails)}")
                 self.circuit_breaker_until = time.time() + 4 * 3600
         
         if not active: return
@@ -767,6 +777,13 @@ class TradingBot:
             
         if not hasattr(self, 'current_indicators'):
             self.current_indicators = {}
+        op = df['open'].iloc[-1]
+        hp = df['high'].iloc[-1]
+        lp = df['low'].iloc[-1]
+        body = abs(cp - op)
+        rng = hp - lp
+        body_to_range = body / rng if rng > 0 else 0
+        
         self.current_indicators[pair] = {
             'atr': float(atr),
             'bb_upper': float(bb_upper),
@@ -775,7 +792,11 @@ class TradingBot:
             'hourly_vol': float(ema_data.get('hourly_volume', 0.0)),
             'avg_vol': float(ema_data.get('vol_1h_avg_24h', 0.0)),
             'bb_width': float(bb_width),
-            'bb_width_prev': float(bb_width_prev)
+            'bb_width_prev': float(bb_width_prev),
+            'rsi_1h': float(ema_data.get('rsi_1h', 0.0)),
+            'ema_50_1h': float(ema_data.get('ema_50_1h', 0.0)),
+            'ema_50_1h_prev': float(ema_data.get('ema_50_1h_prev', 0.0)),
+            'body_to_range': float(body_to_range)
         }
 
         # Strategy Trend BB Squeeze
@@ -802,7 +823,23 @@ class TradingBot:
             
             is_macro_decoupled = self.config.get('DECOUPLE_BTC_MIN', -3.0) <= btc_4h_ret <= self.config.get('DECOUPLE_BTC_MAX', 1.0) and alt_4h_ret > (btc_4h_ret + self.config.get('DECOUPLE_ALT_RET', 3.0))
             
-            if is_macro_decoupled:
+            # Additional Filters
+            rsi_1h = ema_data.get('rsi_1h', 60.0)
+            rsi_ok = 52.0 <= rsi_1h <= 75.0
+            
+            ema_50_1h = ema_data.get('ema_50_1h', 0.0)
+            ema_50_1h_prev = ema_data.get('ema_50_1h_prev', ema_50_1h)
+            ema_slope_ok = ema_50_1h >= ema_50_1h_prev
+            
+            op = df['open'].iloc[-1]
+            hp = df['high'].iloc[-1]
+            lp = df['low'].iloc[-1]
+            body = abs(cp - op)
+            rng = hp - lp
+            body_to_range = body / rng if rng > 0 else 0
+            btr_ok = body_to_range >= self.config.get('MIN_BODY_TO_RANGE', 0.40)
+            
+            if is_macro_decoupled and rsi_ok and ema_slope_ok and btr_ok:
                 if hourly_vol > self.config.get('VOL_THRESHOLD', 1.5) * avg_vol:
                     if cp > bb_upper and bb_width > bb_width_prev:
                         setup = "Decoupled_Squeeze_Breakout"
@@ -813,11 +850,10 @@ class TradingBot:
             is_high_beta_decoupler = relative_range >= self.config.get('RDR_MIN', 1.6)
             
             ema_20_1h = ema_data.get('ema_20_1h', 0.0)
-            ema_50_1h = ema_data.get('ema_50_1h', 0.0)
             trend_aligned = cp > ema_20_1h > ema_50_1h if ema_50_1h > 0 else False
             volume_confirmed = hourly_vol > self.config.get('VOL_THRESHOLD', 1.5) * avg_vol
             
-            if is_high_beta_decoupler and is_macro_decoupled and trend_aligned and volume_confirmed:
+            if is_high_beta_decoupler and is_macro_decoupled and trend_aligned and volume_confirmed and rsi_ok and ema_slope_ok and btr_ok:
                 setup = "Decoupled_Trend_Continuation"
 
             if setup:

@@ -1,4 +1,4 @@
-# Strategy V160 - Volatile Momentum & Decoupling Squeeze
+# Strategy V161 - Volatile Momentum & Decoupling Squeeze
 
 ## Overview
 Binance spot trading bot managed by an autonomous AI agent. The AI has full authority to research, discover, and deploy any statistically profitable entry setups (e.g., trend following, momentum breakouts, capitulation bounces) to maximize PnL and outperform a Bitcoin Buy-and-Hold baseline.
@@ -9,12 +9,13 @@ Binance spot trading bot managed by an autonomous AI agent. The AI has full auth
 - Continuous Market Exposure & Capital Rotation: The bot must ALWAYS be active and in at least one trade, but this does NOT mean buying and holding indefinitely. The bot must actively take profits and cut losses to maximize PnL, but it must immediately rotate that capital into new high-probability setups so the portfolio is never sitting 100% in cash.
 - The AI is responsible for keeping the "Current Active Strategy" section below updated, but MUST ALWAYS preserve this "AI Evolution Mandate" section so future AIs do not lock themselves into a single strategy.
 
-## Current Active Strategy (V160)
+## Current Active Strategy (V161)
 - *Primary Setup (Decoupled Squeeze Breakout & Trend Continuation):* Targets altcoins that exhibit relative strength against BTC and volume anomalies during periods of BTC consolidation.
-  - **Entry Filter**: BTC 4h ROC is between -3.0% and +1.0%, while Altcoin 4h ROC > (BTC 4h ROC + 3.0%).
-  - **Entry Signal**: Altcoin RVOL > 1.5x AND price closes outside the upper Bollinger Band while Bands are expanding.
-  - **Risk Scaling**: Risk multiplier scales based on BTC 24h return: 1.0x if >= -1.0%, 0.8x if -3.0% to -1.0%, and 0.5x if <= -3.0%.
-- *Filters:* Expanded Tier 1/2/3 statistically validated blacklist (including PEPEUSDT, DOGEUSDT, SOLUSDT, AVAXUSDT, etc.) natively supported in portfolio_backtester. Time-based exits, tight trailing stops, and complex candlestick filters were explicitly rejected to avoid overfitting and preserve running winners.
+  - **Trend Alignment Filter**: 1h Close > 50 EMA and 50 EMA Slope >= Flat.
+  - **Momentum Filter**: 1h RSI(14) between 52.0 and 75.0 to prevent exhaustion entries.
+  - **Entry Signal**: Altcoin RVOL > 1.8x, Body-to-Range > 0.40, AND price closes outside the upper Bollinger Band while Bands are expanding.
+  - **Risk Scaling**: Risk multiplier scales based on BTC 24h return. Initial stop loss max 7.0%.
+- *Filters:* Expanded Tier 1/2/3 statistically validated blacklist. Added highly illiquid and high-frequency churn pairs. Time-of-Day, Day-of-Week, and hard hold-time limits explicitly rejected.
 
 ## Exit Logic
 - **Profit-Activated Trailing Stop**: Initial stops are kept wide (-6.0% to -7.0%). Trailing stops (-3.5%) only activate once a profit cushion of +6.0% to +8.0% is established.

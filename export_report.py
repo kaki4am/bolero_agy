@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from trading_utils import get_db_connection, atomic_json_dump, get_binance_client
 
 def get_current_version():
-    """Read the active strategy version (e.g. 'V160') from GEMINI.md."""
+    """Read the active strategy version (e.g. 'V161') from GEMINI.md."""
     try:
         with open('GEMINI.md') as f:
             m = re.search(r'Strategy\s+(V\d+)', f.read())

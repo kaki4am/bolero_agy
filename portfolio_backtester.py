@@ -13,7 +13,7 @@ class PortfolioBacktester:
 
 
     def precalculate_all(self, status_callback=None):
-        if status_callback: status_callback("Calculating Strategy V160 Indicators...")
+        if status_callback: status_callback("Calculating Strategy V161 Indicators...")
         import json, os
         blacklist = []
         if os.path.exists("restricted_pairs.json"):
@@ -86,7 +86,8 @@ class PortfolioBacktester:
             df_1h['alt_daily_range_pct'] = (df_1h['high'].rolling(24).max() - df_1h['low'].rolling(24).min()) / df_1h['low'].rolling(24).min() * 100
             df_1h['ema_20_1h'] = ta.ema(df_1h['close'], length=20)
             df_1h['ema_50_1h'] = ta.ema(df_1h['close'], length=50)
-            
+            df_1h['ema_50_1h_prev'] = df_1h['ema_50_1h'].shift(1)
+            df_1h['rsi_1h'] = ta.rsi(df_1h['close'], length=14)
                 
 
             df_1h['timestamp'] = df_1h['timestamp'] + pd.Timedelta(hours=1)
@@ -110,6 +111,8 @@ class PortfolioBacktester:
             indicators['alt_daily_range_pct'] = df_1h_idx['alt_daily_range_pct'].reindex(df_1m_idx.index).ffill().fillna(0)
             indicators['ema_20_1h'] = df_1h_idx['ema_20_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
             indicators['ema_50_1h'] = df_1h_idx['ema_50_1h'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['ema_50_1h_prev'] = df_1h_idx['ema_50_1h_prev'].reindex(df_1m_idx.index).ffill().fillna(0)
+            indicators['rsi_1h'] = df_1h_idx['rsi_1h'].reindex(df_1m_idx.index).ffill().fillna(50.0)
 
             self.precalculated_indicators[symbol] = indicators
 
@@ -141,6 +144,7 @@ class PortfolioBacktester:
             df = self.pair_data[s]['1m']
             ind = self.precalculated_indicators[s]
             np_data[s] = {
+                'open': df['open'].values,
                 'close': df['close'].values,
                 'high': df['high'].values,
                 'low': df['low'].values,
@@ -159,6 +163,8 @@ class PortfolioBacktester:
                 'alt_daily_range_pct': ind['alt_daily_range_pct'].values,
                 'ema_20_1h': ind['ema_20_1h'].values,
                 'ema_50_1h': ind['ema_50_1h'].values,
+                'ema_50_1h_prev': ind['ema_50_1h_prev'].values,
+                'rsi_1h': ind['rsi_1h'].values,
                 'bb_width_prev': pd.Series(ind['bb_width']).shift(1).fillna(0).values
             }
 
@@ -319,7 +325,22 @@ class PortfolioBacktester:
                     avg_vol = s_data['vol_1h_avg_24h'][idx]
                     
                     if is_macro_decoupled:
-                        if hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:
+                        
+                        rsi_1h = s_data['rsi_1h'][idx]
+                        rsi_ok = 52.0 <= rsi_1h <= 75.0
+                        ema_50_1h = s_data['ema_50_1h'][idx]
+                        ema_50_1h_prev = s_data['ema_50_1h_prev'][idx]
+                        ema_slope_ok = ema_50_1h >= ema_50_1h_prev
+                        
+                        op = s_data['open'][idx]
+                        hp = s_data['high'][idx]
+                        lp = s_data['low'][idx]
+                        body = abs(price - op)
+                        rng = hp - lp
+                        body_to_range = body / rng if rng > 0 else 0
+                        btr_ok = body_to_range >= params.get('MIN_BODY_TO_RANGE', 0.40)
+                        
+                        if hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol and rsi_ok and ema_slope_ok and btr_ok:
                             bb_width_prev = s_data['bb_width_prev'][idx]
                             bbw = s_data['bb_width'][idx]
                             if price > bb_upper and bbw > bb_width_prev:
@@ -330,7 +351,7 @@ class PortfolioBacktester:
                     ema20, ema50 = s_data['ema_20_1h'][idx], s_data['ema_50_1h'][idx]
                     trend_aligned = price > ema20 > ema50 if ema50 > 0 else False
                     
-                    if is_high_beta and is_macro_decoupled and trend_aligned and hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol:
+                    if is_high_beta and is_macro_decoupled and trend_aligned and hourly_vol > params.get('VOL_THRESHOLD', 1.5) * avg_vol and s_data['rsi_1h'][idx] >= 52.0 and s_data['rsi_1h'][idx] <= 75.0 and s_data['ema_50_1h'][idx] >= s_data['ema_50_1h_prev'][idx] and (abs(price - s_data['open'][idx]) / (s_data['high'][idx] - s_data['low'][idx] + 1e-8) >= params.get('MIN_BODY_TO_RANGE', 0.40)):
                         setup = "Decoupled_Trend_Continuation"
 
                     if setup:

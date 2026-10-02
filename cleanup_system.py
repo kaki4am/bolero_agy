@@ -120,7 +120,13 @@ WHITELIST = {
     'recent_losses.py',
     'committee_manual_run.log',
     'committee_live.log',
-    'patch_ideas.py'
+    'patch_ideas.py',
+    '.dashboard_cache.json',
+    'gemini_credit_gate.log',
+    '.positions_cache.json',
+    'find_unused.py',
+    'optuna.db',
+    'check_gemini_credits.sh'
 }
 
 def run_cleanup():

@@ -20,3 +20,6 @@ only append genuinely new rejected ideas.
 - Rejected Candle Location Ratio for entries: backtesting revealed it acted as a severe bottleneck, reducing trade frequency to statistically insignificant levels.
 - Rejected Mid-Flight Profit Lock: tightening the trailing stop during high volatility prematurely exits trades before macro trend targets are met.
 - Rejected Hold Time caps and TOD/DOW binary filters: cut off positive expectancy generated in 24+ hour holds and risk overfitting.
+- Rejected Time-of-Day (TOD) Filters: Broad time-of-day exclusions cause out-of-sample overfitting and eliminate outsized momentum breakouts during global session transitions.
+- Rejected Day-of-Week (DOW) Filters: Cutting trade opportunities based on calendar-day distribution introduces data-snooping bias with zero causal backing in 24/7 crypto markets.
+- Rejected Hold Time Limits: Hard hold-time caps (e.g., 24h/72h) artificially cut off winning runs prematurely instead of addressing the root cause (entry conviction).

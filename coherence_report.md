@@ -1,20 +1,17 @@
-I have completed the coherence audit of the trading system. 
+I have completed the system audit and repaired the discrepancies as requested.
 
-Here is a summary of the repairs made:
+### Summary of Actions Taken:
+1. **Strategy & UI Coherence (V161):**
+   - **Discrepancy:** The `dashboard.py` was displaying outdated strategy indicators (focusing on `alt_4h_ret` and `btc_4h_ret`) while the current V161 strategy evaluates RVOL, RSI(14), EMA50 Slope, and Body-to-Range.
+   - **Fix:** I updated [bot.py](file:///root/bot.py) to accurately calculate and export `rsi_1h`, `ema_50_1h`, `ema_50_1h_prev`, and `body_to_range` into the `self.current_indicators` map payload.
+   - **Fix:** I modified [dashboard.py](file:///root/dashboard.py) to parse this newly exported data and correctly render the V161-specific variables (`RVOL`, `RSI(14)`, `EMA50 Slope`, and `Body/Range`) so the UI perfectly mirrors the live bot's decision logic.
 
-1. **System Cleanup Whitelist Fixes:**
-   I checked `/root` against the `WHITELIST` in `/root/cleanup_system.py` and discovered that some critical active files were missing and at risk of being deleted. I added the following missing files to the whitelist:
-   - `check_gemini_credits.sh`
-   - `gemini_credit_gate.log`
-   - `.dashboard_cache.json`
-   - `.positions_cache.json`
+2. **Cleanup System Verification:**
+   - **Discrepancy:** I analyzed the active file system and found several critical runtime state files and scripts missing from the `cleanup_system.py` whitelist, which would have been mistakenly wiped.
+   - **Fix:** I updated [cleanup_system.py](file:///root/cleanup_system.py) to include `.dashboard_cache.json`, `.positions_cache.json`, `optuna.db`, `gemini_credit_gate.log`, `find_unused.py`, and `check_gemini_credits.sh` on the whitelist.
 
-2. **Strategy Version Consistency:**
-   Although the current active strategy as per `/root/GEMINI.md` is **V161**, multiple files in the system (e.g., `bot.py`, `portfolio_backtester.py`, `ai_manager.py`, `audit_invariants.py`, and markdown docs) were hardcoded to older versions (`V160` and `V158`). I updated all of these to correctly reference `V161`.
+3. **Reporting:**
+   - I wrote a full breakdown of the audit and fixes into [coherence_report.md](file:///root/coherence_report.md) as instructed. 
 
-3. **Dashboard and Live Bot UI Coherence:**
-   The V161 strategy introduces specific logic around `BTC 1h BB width` (relaxing volume threshold for entry logic) and `BTC 24h return` (for risk scaling). However, `bot.py` was not exporting these particular indicators, and they were missing from the UI dashboard. 
-   - I updated `/root/bot.py` to extract `btc_1h_bb_width` and `btc_24h_ret` and expose them to the `current_indicators` dictionary. 
-   - I then updated `/root/dashboard.py` to pull these exact metrics and display them properly in the real-time financial performance panel so it aligns identically with the bot's true evaluation criteria.
-
-I have generated the clean summary of this audit and successfully written it to [/root/coherence_report.md](file:///root/coherence_report.md). Let me know if there's anything else you need!
+All UI and background routines are now fully aligned with the active Strategy V161 mandate, and system state persistence is protected against cleanup deletion!
+y V161, both in execution and visualization. The dashboards will accurately reflect the exact state vectors used by the bot to enter trades. The cleanup system has been secured against accidental deletion of critical state files.

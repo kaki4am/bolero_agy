@@ -280,10 +280,10 @@ async def optimize():
         params.update({
             'MIN_VOLATILITY': trial.suggest_categorical('MIN_VOLATILITY', SEARCH_SPACE['MIN_VOLATILITY']),
             'BASE_RISK_PERCENT': trial.suggest_float('BASE_RISK_PERCENT', 0.5, 2.0),
-            'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 10.0, 20.0),
+            'MAX_RISK_PER_TRADE_PERCENT': trial.suggest_float('MAX_RISK_PER_TRADE_PERCENT', 10.0, 18.0),
             'COOLDOWN_PERIOD': trial.suggest_categorical('COOLDOWN_PERIOD', SEARCH_SPACE['COOLDOWN_PERIOD']),
             'ATR_SL_MULT': trial.suggest_float('ATR_SL_MULT', 1.0, 8.0),
-            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -10.0, -2.0),
+            'PORTFOLIO_EJECT': trial.suggest_float('PORTFOLIO_EJECT', -8.0, -2.0),
             'PORTFOLIO_HARVEST': trial.suggest_float('PORTFOLIO_HARVEST', 2.0, 20.0),
             'SL_MIN_PCT': trial.suggest_float('SL_MIN_PCT', 0.060, 0.070),
             'TAKE_PROFIT': trial.suggest_float('TAKE_PROFIT', 0.010, 0.200),

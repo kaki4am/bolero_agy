@@ -228,7 +228,7 @@ def get_performance_stats():
             w30 = len(sub30[sub30['net'] > 0])
             stats['win_rate_30d'] = (w30 / len(sub30) * 100.0)
 
-        # Since Strategy V160 deployment (Sep 21, 2026 11:28:35 UTC)
+        # Since Strategy V161 deployment (Sep 21, 2026 11:28:35 UTC)
         v160_start = pd.to_datetime('2026-09-21 11:28:35')
         sub_v160 = rdf[rdf['sell_ts'] >= v160_start]
         stats['days_v160'] = max((now - v160_start).total_seconds() / 86400.0, 1.0)
@@ -259,7 +259,7 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
     Computes deterministic multi-year compounding projections (1, 2, 3, 5, 10 years)
     based on empirical Bolero performance across:
     1. 30-Day Sustained Pace (full cycle baseline)
-    2. V160 Decoupled Squeeze (since Sep 21 inception)
+    2. V161 Decoupled Squeeze (since Sep 21 inception)
     3. 7-Day Sprint Pace
     """
     equity = max(float(total_equity), 1.0)
@@ -272,7 +272,7 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
     r30 = pnl_30d / equity
     cagr_30 = ((1.0 + r30) ** 12.0) - 1.0 if r30 > -1.0 else 0.0
 
-    # 2. V160 normalized monthly rate & tempered CAGR
+    # 2. V161 normalized monthly rate & tempered CAGR
     r_v160_raw = pnl_v160 / equity
     # Tempered realistic cycle CAGR (15% monthly to account for bear markets/consolidation):
     cagr_v160_tempered = ((1.0 + 0.15) ** 12.0) - 1.0
@@ -324,7 +324,7 @@ def calculate_capital_projections(total_equity: float, stats: dict) -> tuple:
         f"  5 Years:  {fmt_currency(proj_30d[5])}",
         f"  10 Years: {fmt_currency(proj_30d[10])}",
         "",
-        f"• V160 DECOUPLED SQUEEZE (+{r_v160_raw*100:.1f}% in {days_v160:.0f}d | Tempered 15%/mo):",
+        f"• V161 DECOUPLED SQUEEZE (+{r_v160_raw*100:.1f}% in {days_v160:.0f}d | Tempered 15%/mo):",
         f"  1 Year:   {fmt_currency(proj_v160[1])}",
         f"  2 Years:  {fmt_currency(proj_v160[2])}",
         f"  3 Years:  {fmt_currency(proj_v160[3])}",
@@ -349,7 +349,7 @@ def get_market_and_system_health():
         'btc_24h_ret': 0.0,
         'trading_bot_service': 'unknown',
         'optimizer_service': 'unknown',
-        'active_version': 'V160'
+        'active_version': 'V161'
     }
     
     # Read GEMINI.md active version
@@ -463,7 +463,7 @@ REQUIRED SECTIONS IN YOUR BRIEF:
 4. 🧠 AI MANAGER INTEL: What the hourly AI Manager discovered (Reddit/market sentiment, risk multiplier, whitelisted narrative coins, confidence).
 5. 🏛️ NIGHTLY COMMITTEE & STRATEGY STATUS: What the committee concluded (diagnosed leaks, reflection stance, whether evolutions passed or were gated/rolled back, active version).
 6. 🔭 24H FORWARD OUTLOOK: 1-2 key things to monitor today (e.g. BTC breakout levels, fee discipline, trailing stops).
-7. 🔭 LONG-TERM CAPITAL PROJECTIONS: Multi-year compounding projections (1, 2, 3, 5, 10 years) based on Bolero's empirical performance across 30-day pace, V160 deployment, and 7-day sprint. Present the projections using the exact figures from RAW SYSTEM DATA under capital_projections.
+7. 🔭 LONG-TERM CAPITAL PROJECTIONS: Multi-year compounding projections (1, 2, 3, 5, 10 years) based on Bolero's empirical performance across 30-day pace, V161 deployment, and 7-day sprint. Present the projections using the exact figures from RAW SYSTEM DATA under capital_projections.
 
 RAW SYSTEM DATA:
 {context_json}

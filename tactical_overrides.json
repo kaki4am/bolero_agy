@@ -3,12 +3,14 @@
     "SL_MULT_OFFSET": 0.0,
     "VOL_SPIKE_MULT_OFFSET": 0.0,
     "PORTFOLIO_EJECT_OFFSET": 0.0,
-    "blacklist_add": [],
-    "whitelist_add": [
-        "NEARUSDT",
-        "QNTUSDT",
-        "MOVRUSDT"
+    "blacklist_add": [
+        "NEARUSDT"
     ],
-    "rationale": "With BTC up +1.19% and r/CryptoCurrency sentiment showing cautious optimism and greed backed by ETF inflows alongside selective altcoin outperformance, standard risk (1.0x) is maintained while whitelisting breakout momentum leaders NEARUSDT, QNTUSDT, and MOVRUSDT.",
-    "confidence": 0.95
+    "whitelist_add": [
+        "GTCUSDT",
+        "SCRUSDT",
+        "ONDOUSDT"
+    ],
+    "rationale": "BTC maintains positive momentum (+2.05% at $85.2k) aligned with cautiously optimistic r/CryptoCurrency retail sentiment, allowing full 1.0x risk while blacklisting exploit-hit NEAR and whitelisting surging momentum leaders GTC and SCR.",
+    "confidence": 0.92
 }

@@ -288,17 +288,20 @@ def main():
                         pair_inds = dashboard_data.get(p['pair'])
                         if pair_inds:
                             atr = pair_inds.get('atr', 0)
-                            alt_4h_ret = pair_inds.get('alt_4h_ret', 0)
-                            btc_4h_ret = pair_inds.get('btc_4h_ret', 0)
-                            bb_width = pair_inds.get('bb_width', 0)
-                            bb_width_prev = pair_inds.get('bb_width_prev', 0)
                             hourly_vol = pair_inds.get('hourly_vol', 0)
                             avg_vol = pair_inds.get('avg_vol', 0)
+                            rvol = (hourly_vol / avg_vol) if avg_vol > 0 else 0
+                            bb_width = pair_inds.get('bb_width', 0)
+                            bb_width_prev = pair_inds.get('bb_width_prev', 0)
                             bbu = pair_inds.get('bb_upper', 0)
+                            rsi = pair_inds.get('rsi_1h', 0)
+                            ema50 = pair_inds.get('ema_50_1h', 0)
+                            ema50_prev = pair_inds.get('ema_50_1h_prev', 0)
+                            ema_slope = "UP/FLAT" if ema50 >= ema50_prev else "DOWN"
+                            btr = pair_inds.get('body_to_range', 0)
 
-                            pnl_text += f"  ↳ Alt 4h: {alt_4h_ret:.1f}% vs BTC 4h: {btc_4h_ret:.1f}% | 1H Vol: {hourly_vol:,.0f} vs Avg: {avg_vol:,.0f}\n"
-                            pnl_text += f"  ↳ BBW: {bb_width:.4f} (Prev: {bb_width_prev:.4f}) | BBU: {bbu:.4f}\n"
-                            pnl_text += f"  ↳ 1h ATR: {atr:.4f}\n"
+                            pnl_text += f"  ↳ RVOL: {rvol:.2f}x | RSI(14): {rsi:.1f} | EMA50: {ema_slope} | Body/Range: {btr:.2f}\n"
+                            pnl_text += f"  ↳ BBW: {bb_width:.4f} (Prev: {bb_width_prev:.4f}) | BBU: {bbu:.4f} | 1h ATR: {atr:.4f}\n"
 
                 layout["pnl_summary"].update(Panel(pnl_text, title="Financial Performance"))
                 layout["footer"].update(Panel("Auto-tracking Latest Trades | P: Open Positions Visualizer | Q/ESC: Main Menu | UI Latency: <2ms", style="dim"))
