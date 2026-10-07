@@ -12,6 +12,7 @@ import json
 import sqlite3
 import subprocess
 from datetime import datetime, timedelta
+import re
 import pandas as pd
 from dotenv import load_dotenv
 

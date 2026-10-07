@@ -265,6 +265,7 @@ class TradingBot:
                 df = pd.DataFrame(klines, columns=['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i'])
                 self.data_1m[pair] = pd.DataFrame({
                     'timestamp': pd.to_datetime([int(x) for x in df['t']], unit='ms'),
+                    'open': df['o'].astype(float),
                     'high': df['h'].astype(float),
                     'low': df['l'].astype(float),
                     'close': df['c'].astype(float)
@@ -319,6 +320,7 @@ class TradingBot:
                                         df = pd.DataFrame(klines, columns=['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i'])
                                         self.data_1m[pair] = pd.DataFrame({
                                             'timestamp': pd.to_datetime([int(x) for x in df['t']], unit='ms'),
+                                            'open': df['o'].astype(float),
                                             'high': df['h'].astype(float),
                                             'low': df['l'].astype(float),
                                             'close': df['c'].astype(float)
@@ -684,10 +686,10 @@ class TradingBot:
                         await self.execute_trade(pair, 'SELL')
                 if k['x']:
                     async def process_and_analyze():
-                        def update_data(df, t, h, l, c_val):
-                            new_row = pd.DataFrame({'timestamp':[pd.to_datetime(t, unit='ms')],'high':[float(h)],'low':[float(l)],'close':[float(c_val)]})
+                        def update_data(df, t, o_val, h, l, c_val):
+                            new_row = pd.DataFrame({'timestamp':[pd.to_datetime(t, unit='ms')],'open':[float(o_val)],'high':[float(h)],'low':[float(l)],'close':[float(c_val)]})
                             return pd.concat([df, new_row], ignore_index=True).iloc[-300:]
-                        self.data_1m[pair] = await asyncio.to_thread(update_data, self.data_1m[pair], k['t'], k['h'], k['l'], k['c'])
+                        self.data_1m[pair] = await asyncio.to_thread(update_data, self.data_1m[pair], k['t'], k['o'], k['h'], k['l'], k['c'])
                         await self.analyze(pair)
                     asyncio.create_task(process_and_analyze())
 
@@ -777,9 +779,9 @@ class TradingBot:
             
         if not hasattr(self, 'current_indicators'):
             self.current_indicators = {}
-        op = df['open'].iloc[-1]
-        hp = df['high'].iloc[-1]
-        lp = df['low'].iloc[-1]
+        op = df['open'].iloc[-1] if 'open' in df.columns else cp
+        hp = df['high'].iloc[-1] if 'high' in df.columns else cp
+        lp = df['low'].iloc[-1] if 'low' in df.columns else cp
         body = abs(cp - op)
         rng = hp - lp
         body_to_range = body / rng if rng > 0 else 0
@@ -831,9 +833,9 @@ class TradingBot:
             ema_50_1h_prev = ema_data.get('ema_50_1h_prev', ema_50_1h)
             ema_slope_ok = ema_50_1h >= ema_50_1h_prev
             
-            op = df['open'].iloc[-1]
-            hp = df['high'].iloc[-1]
-            lp = df['low'].iloc[-1]
+            op = df['open'].iloc[-1] if 'open' in df.columns else cp
+            hp = df['high'].iloc[-1] if 'high' in df.columns else cp
+            lp = df['low'].iloc[-1] if 'low' in df.columns else cp
             body = abs(cp - op)
             rng = hp - lp
             body_to_range = body / rng if rng > 0 else 0
