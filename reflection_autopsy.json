@@ -1,46 +1,46 @@
 {
-    "timestamp": "2026-10-02 03:00:28",
-    "recommended_stance": "EXPANSION",
-    "posture_summary": "Strategy is performing well with positive expectancy. Maintain strict discipline on fee drag.",
+    "timestamp": "2026-10-07 09:09:44",
+    "recommended_stance": "SELECTIVE_ROTATION",
+    "posture_summary": "Neutral market conditions. Maintain standard risk caps and focus on filtering noise.",
     "performance_7d": {
-        "trades": 50,
-        "net_pnl": 29.62,
-        "gross_pnl": 31.2,
-        "fees": 1.58,
-        "win_rate": 68.0,
-        "profit_factor": 2.54,
-        "avg_win": 1.44,
-        "avg_loss": -1.2,
-        "avg_hold_h": 156.3
+        "trades": 9,
+        "net_pnl": -7.49,
+        "gross_pnl": -7.26,
+        "fees": 0.23,
+        "win_rate": 44.4,
+        "profit_factor": 0.12,
+        "avg_win": 0.26,
+        "avg_loss": -1.71,
+        "avg_hold_h": 147.3
     },
     "performance_30d": {
-        "trades": 225,
-        "net_pnl": 19.18,
-        "gross_pnl": 39.52,
-        "fees": 20.34,
-        "win_rate": 46.7,
-        "profit_factor": 1.06,
-        "avg_win": 3.45,
-        "avg_loss": -2.86,
-        "avg_hold_h": 105.3
+        "trades": 197,
+        "net_pnl": -17.55,
+        "gross_pnl": -0.44,
+        "fees": 17.1,
+        "win_rate": 47.7,
+        "profit_factor": 0.94,
+        "avg_win": 3.11,
+        "avg_loss": -3.01,
+        "avg_hold_h": 104.8
     },
     "active_leaks_detected": [
         {
             "code": "LEAK_EXCESSIVE_FEE_BURN",
             "severity": "HIGH",
-            "evidence": "Paid $20.34 in Binance fees over 225 trades in 30d (avg 7.5 trades/day). Gross PnL was $39.52.",
+            "evidence": "Paid $17.1 in Binance fees over 197 trades in 30d (avg 6.6 trades/day). Gross PnL was $-0.44.",
             "recommended_action": "Reduce trade churn. Require higher relative volume confirmation (e.g., VOL_THRESHOLD >= 1.8), wider minimum take profit targets, and filter out low-expectancy chop."
         },
         {
             "code": "LEAK_CHRONIC_BLEEDING_PAIRS",
             "severity": "HIGH",
-            "evidence": "Specific pairs consistently generating heavy losses: [{'pair': 'POLYXUSDT', 'trades': 2, 'net_pnl': np.float64(-14.06), 'win_rate': np.float64(0.0)}, {'pair': 'ARKUSDT', 'trades': 2, 'net_pnl': np.float64(-12.13), 'win_rate': np.float64(0.0)}, {'pair': 'PUNDIXUSDT', 'trades': 3, 'net_pnl': np.float64(-9.5), 'win_rate': np.float64(0.0)}, {'pair': 'ICPUSDT', 'trades': 3, 'net_pnl': np.float64(-8.89), 'win_rate': np.float64(0.0)}, {'pair': 'RUNEUSDT', 'trades': 3, 'net_pnl': np.float64(-8.64), 'win_rate': np.float64(33.3)}, {'pair': 'AVAUSDT', 'trades': 3, 'net_pnl': np.float64(-8.39), 'win_rate': np.float64(33.3)}, {'pair': 'KAVAUSDT', 'trades': 1, 'net_pnl': np.float64(-7.82), 'win_rate': np.float64(0.0)}, {'pair': 'EGLDUSDT', 'trades': 2, 'net_pnl': np.float64(-7.65), 'win_rate': np.float64(0.0)}, {'pair': 'ILVUSDT', 'trades': 1, 'net_pnl': np.float64(-7.42), 'win_rate': np.float64(0.0)}, {'pair': 'STXUSDT', 'trades': 2, 'net_pnl': np.float64(-7.36), 'win_rate': np.float64(0.0)}, {'pair': 'UNIUSDT', 'trades': 6, 'net_pnl': np.float64(-7.07), 'win_rate': np.float64(16.7)}, {'pair': 'LPTUSDT', 'trades': 1, 'net_pnl': np.float64(-6.96), 'win_rate': np.float64(0.0)}, {'pair': 'ALGOUSDT', 'trades': 3, 'net_pnl': np.float64(-6.83), 'win_rate': np.float64(33.3)}, {'pair': 'ARPAUSDT', 'trades': 1, 'net_pnl': np.float64(-6.03), 'win_rate': np.float64(0.0)}, {'pair': 'API3USDT', 'trades': 1, 'net_pnl': np.float64(-5.7), 'win_rate': np.float64(0.0)}, {'pair': 'AAVEUSDT', 'trades': 3, 'net_pnl': np.float64(-5.06), 'win_rate': np.float64(33.3)}]",
+            "evidence": "Specific pairs consistently generating heavy losses: [{'pair': 'POLYXUSDT', 'trades': 2, 'net_pnl': np.float64(-14.06), 'win_rate': np.float64(0.0)}, {'pair': 'ARKUSDT', 'trades': 2, 'net_pnl': np.float64(-12.13), 'win_rate': np.float64(0.0)}, {'pair': 'PUNDIXUSDT', 'trades': 3, 'net_pnl': np.float64(-9.5), 'win_rate': np.float64(0.0)}, {'pair': 'ICPUSDT', 'trades': 3, 'net_pnl': np.float64(-8.89), 'win_rate': np.float64(0.0)}, {'pair': 'RUNEUSDT', 'trades': 3, 'net_pnl': np.float64(-8.64), 'win_rate': np.float64(33.3)}, {'pair': 'AVAUSDT', 'trades': 3, 'net_pnl': np.float64(-8.39), 'win_rate': np.float64(33.3)}, {'pair': 'KAVAUSDT', 'trades': 1, 'net_pnl': np.float64(-7.82), 'win_rate': np.float64(0.0)}, {'pair': 'ILVUSDT', 'trades': 1, 'net_pnl': np.float64(-7.42), 'win_rate': np.float64(0.0)}, {'pair': 'STXUSDT', 'trades': 2, 'net_pnl': np.float64(-7.36), 'win_rate': np.float64(0.0)}, {'pair': 'ALGOUSDT', 'trades': 3, 'net_pnl': np.float64(-6.83), 'win_rate': np.float64(33.3)}, {'pair': 'ARPAUSDT', 'trades': 1, 'net_pnl': np.float64(-6.03), 'win_rate': np.float64(0.0)}, {'pair': 'API3USDT', 'trades': 1, 'net_pnl': np.float64(-5.7), 'win_rate': np.float64(0.0)}]",
             "recommended_action": "Add these chronic underperformers to the blacklist in restricted_pairs.json."
         },
         {
             "code": "LEAK_TIME_DECAY_PREMATURE_EXITS",
             "severity": "MEDIUM",
-            "evidence": "10 trades exited around 18-24 hours at a net loss (total loss: $-25.58).",
+            "evidence": "9 trades exited around 18-24 hours at a net loss (total loss: $-24.79).",
             "recommended_action": "Ensure profit locks do not trigger on losing trades. Allow high-conviction trades breathing room rather than arbitrary calendar cutoff."
         }
     ],
@@ -88,12 +88,6 @@
             "win_rate": 0.0
         },
         {
-            "pair": "EGLDUSDT",
-            "trades": 2,
-            "net_pnl": -7.65,
-            "win_rate": 0.0
-        },
-        {
             "pair": "ILVUSDT",
             "trades": 1,
             "net_pnl": -7.42,
@@ -103,18 +97,6 @@
             "pair": "STXUSDT",
             "trades": 2,
             "net_pnl": -7.36,
-            "win_rate": 0.0
-        },
-        {
-            "pair": "UNIUSDT",
-            "trades": 6,
-            "net_pnl": -7.07,
-            "win_rate": 16.7
-        },
-        {
-            "pair": "LPTUSDT",
-            "trades": 1,
-            "net_pnl": -6.96,
             "win_rate": 0.0
         },
         {
@@ -134,13 +116,7 @@
             "trades": 1,
             "net_pnl": -5.7,
             "win_rate": 0.0
-        },
-        {
-            "pair": "AAVEUSDT",
-            "trades": 3,
-            "net_pnl": -5.06,
-            "win_rate": 33.3
         }
     ],
-    "total_lifetime_trades": 3330
+    "total_lifetime_trades": 3335
 }
