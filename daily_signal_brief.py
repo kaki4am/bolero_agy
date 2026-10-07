@@ -507,27 +507,70 @@ def get_ai_governance_intel():
     # 2. Nightly Committee autopsy & latest findings
     if os.path.exists(AUTOPSY_FILE):
         try:
+            mtime = os.path.getmtime(AUTOPSY_FILE)
+            age_hours = (datetime.now().timestamp() - mtime) / 3600.0
             with open(AUTOPSY_FILE) as f:
-                lines = f.readlines()[:25]
+                first_line = f.readline().strip()
+            date_match = re.search(r'\((\d{4}-\d{2}-\d{2}[^)]*)\)', first_line)
+            autopsy_date = date_match.group(1) if date_match else 'unknown'
+            intel['nightly_committee']['autopsy_date'] = autopsy_date
+            intel['nightly_committee']['autopsy_age_hours'] = round(age_hours, 1)
+
+            if age_hours > 30.0:
+                intel['nightly_committee']['autopsy_fresh'] = False
+                intel['nightly_committee']['autopsy_summary'] = (
+                    f"No new strategic reflection autopsy in the last 24h. "
+                    f"Last reflection was recorded on {autopsy_date} (~{int(age_hours / 24)} days ago)."
+                )
+            else:
+                with open(AUTOPSY_FILE) as f:
+                    lines = f.readlines()[:25]
+                intel['nightly_committee']['autopsy_fresh'] = True
                 intel['nightly_committee']['autopsy_summary'] = "".join(lines)
         except Exception:
             pass
 
-    # Check credit gate status
+    # Check credit gate status specifically for nightly_committee
     if os.path.exists(CREDIT_GATE_LOG):
         try:
             with open(CREDIT_GATE_LOG) as f:
-                last_line = f.readlines()[-1].strip()
-                intel['nightly_committee']['credit_gate'] = last_line
+                for line in reversed(f.readlines()):
+                    if '[nightly_committee]' in line:
+                        intel['nightly_committee']['credit_gate'] = line.strip()
+                        break
         except Exception:
             pass
 
-    # Check strategy evolver recent lines
+    # Check strategy evolver recent lines & execution recency
     if os.path.exists(EVOLVER_LOG):
         try:
             with open(EVOLVER_LOG) as f:
-                tail = f.readlines()[-30:]
-                intel['nightly_committee']['recent_evolver_log'] = "".join(tail)
+                tail = f.readlines()[-60:]
+            latest_log_dt = None
+            for line in reversed(tail):
+                m = re.search(r'\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]', line)
+                if m:
+                    try:
+                        latest_log_dt = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S')
+                        break
+                    except Exception:
+                        pass
+            if latest_log_dt:
+                log_age_hours = (datetime.now() - latest_log_dt).total_seconds() / 3600.0
+                intel['nightly_committee']['last_evolver_timestamp'] = str(latest_log_dt)
+                intel['nightly_committee']['evolver_age_hours'] = round(log_age_hours, 1)
+                if log_age_hours > 30.0:
+                    intel['nightly_committee']['evolution_executed_last_24h'] = False
+                    intel['nightly_committee']['recent_evolver_log'] = (
+                        f"No strategy evolution executed in the last 24 hours. "
+                        f"Last evolution finished on {latest_log_dt.strftime('%Y-%m-%d %H:%M:%S UTC')} "
+                        f"(~{int(log_age_hours / 24)} days ago)."
+                    )
+                else:
+                    intel['nightly_committee']['evolution_executed_last_24h'] = True
+                    intel['nightly_committee']['recent_evolver_log'] = "".join(tail[-30:])
+            else:
+                intel['nightly_committee']['recent_evolver_log'] = "".join(tail[-30:])
         except Exception:
             pass
 
@@ -563,7 +606,7 @@ REQUIRED SECTIONS IN YOUR BRIEF:
 2. 💰 PORTFOLIO & 24H PERFORMANCE: Total spot equity, free cash vs bag deployment %, 24h realized PnL (net & gross), fees paid, win rate, and 7-day trend.
 3. 🎯 ACTIVE BAGS & RISK EXPOSURE: Breakdown of current positions (coin, hold time, unrealized PnL %, setup, stop-loss).
 4. 🧠 AI MANAGER INTEL: What the hourly AI Manager discovered (Reddit/market sentiment, risk multiplier, whitelisted narrative coins, confidence).
-5. 🏛️ NIGHTLY COMMITTEE & STRATEGY STATUS: What the committee concluded (diagnosed leaks, reflection stance, whether evolutions passed or were gated/rolled back, active version).
+5. 🏛️ NIGHTLY COMMITTEE & STRATEGY STATUS: Active strategy version and duration (e.g. V161 deployed since Oct 2). Accurately state whether a committee run occurred in the last 24 hours. If the nightly run was SKIPPED or did not trigger (e.g. credit gate / quota check, or no evolution run), clearly state that no evolution ran last night and V<X> continues in steady production. DO NOT report historical backtest pass scores or diagnosed leaks from days ago as if they occurred last night.
 6. 🔭 24H FORWARD OUTLOOK: 1-2 key things to monitor today (e.g. BTC breakout levels, fee discipline, trailing stops).
 7. 🔭 LONG-TERM CAPITAL PROJECTIONS: Multi-year compounding projections (1, 2, 3, 5, 10 years) based on Bolero's empirical performance across 30-day pace, latest active strategy deployment, and 7-day sprint. Present the projections using the exact figures from RAW SYSTEM DATA under capital_projections.
 
