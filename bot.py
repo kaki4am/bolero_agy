@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import json
 import sqlite3
 import time
@@ -136,6 +137,13 @@ class TradingBot:
             print(f"Error saving active positions: {e}")
 
     async def start(self):
+        loop = asyncio.get_running_loop()
+        def exception_handler(loop, context):
+            exception = context.get('exception')
+            msg = context.get('message')
+            print(f"❌ ASYNCIO BACKGROUND TASK FAILURE: {msg} | Exception: {exception}", file=sys.stderr)
+        loop.set_exception_handler(exception_handler)
+
         self.client = await AsyncClient.create(API_KEY, API_SECRET, testnet=USE_TESTNET)
         await self.sync_positions_from_db()
         await self.fetch_exchange_info()
@@ -686,11 +694,16 @@ class TradingBot:
                         await self.execute_trade(pair, 'SELL')
                 if k['x']:
                     async def process_and_analyze():
-                        def update_data(df, t, o_val, h, l, c_val):
-                            new_row = pd.DataFrame({'timestamp':[pd.to_datetime(t, unit='ms')],'open':[float(o_val)],'high':[float(h)],'low':[float(l)],'close':[float(c_val)]})
-                            return pd.concat([df, new_row], ignore_index=True).iloc[-300:]
-                        self.data_1m[pair] = await asyncio.to_thread(update_data, self.data_1m[pair], k['t'], k['o'], k['h'], k['l'], k['c'])
-                        await self.analyze(pair)
+                        try:
+                            def update_data(df, t, o_val, h, l, c_val):
+                                new_row = pd.DataFrame({'timestamp':[pd.to_datetime(t, unit='ms')],'open':[float(o_val)],'high':[float(h)],'low':[float(l)],'close':[float(c_val)]})
+                                return pd.concat([df, new_row], ignore_index=True).iloc[-300:]
+                            self.data_1m[pair] = await asyncio.to_thread(update_data, self.data_1m[pair], k['t'], k['o'], k['h'], k['l'], k['c'])
+                            await self.analyze(pair)
+                        except Exception as e:
+                            print(f"❌ CRITICAL ERROR in process_and_analyze for {pair}: {e}", file=sys.stderr)
+                            import traceback
+                            traceback.print_exc(file=sys.stderr)
                     asyncio.create_task(process_and_analyze())
 
     async def check_portfolio_guard(self):

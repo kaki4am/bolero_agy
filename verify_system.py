@@ -27,7 +27,7 @@ def check_syntax():
     return True
 
 def check_bot_logic():
-    print("\nStep 2: Bot Logic Dry-Run")
+    print("\nStep 2: Bot Logic Dry-Run (End-to-End Ingestion Schema & Analyze)")
     try:
         spec = importlib.util.spec_from_file_location("bot", "bot.py")
         bot_mod = importlib.util.module_from_spec(spec)
@@ -38,16 +38,33 @@ def check_bot_logic():
         bot.client = MagicMock()
         bot.bm = MagicMock()
         
-        mock_df = pd.DataFrame({
-            'timestamp': pd.date_range(start='2026-05-10', periods=250, freq='min'),
-            'open': np.random.uniform(100, 110, 250),
-            'high': np.random.uniform(110, 120, 250),
-            'low': np.random.uniform(90, 100, 250),
-            'close': np.random.uniform(100, 110, 250),
-            'volume': np.random.uniform(1000, 5000, 250)
+        # 1. Simulate raw Binance REST API klines format: ['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i']
+        t_base = 1700000000000
+        raw_klines = [
+            [t_base + i*60000, str(100.0 + i*0.01), str(105.0 + i*0.01), str(95.0 + i*0.01), str(102.0 + i*0.01), "1000", "0", "0", 1, "0", "0", "0"]
+            for i in range(260)
+        ]
+        df_raw = pd.DataFrame(raw_klines, columns=['t','o','h','l','c','v','ct','qav','nt','tbb','tbq','i'])
+        # Replicate bot.py line 266 ingestion logic exactly
+        bot.data_1m['TESTUSDT'] = pd.DataFrame({
+            'timestamp': pd.to_datetime([int(x) for x in df_raw['t']], unit='ms'),
+            'open': df_raw['o'].astype(float),
+            'high': df_raw['h'].astype(float),
+            'low': df_raw['l'].astype(float),
+            'close': df_raw['c'].astype(float)
         })
-        
-        bot.data_1m['TESTUSDT'] = mock_df
+
+        # 2. Simulate live websocket kline update (k payload from Binance)
+        k_ws = {'t': t_base + 261*60000, 'o': '103.0', 'h': '106.0', 'l': '101.0', 'c': '104.5', 'x': True}
+        new_row = pd.DataFrame({
+            'timestamp': [pd.to_datetime(k_ws['t'], unit='ms')],
+            'open': [float(k_ws['o'])],
+            'high': [float(k_ws['h'])],
+            'low': [float(k_ws['l'])],
+            'close': [float(k_ws['c'])]
+        })
+        bot.data_1m['TESTUSDT'] = pd.concat([bot.data_1m['TESTUSDT'], new_row], ignore_index=True).iloc[-300:]
+
         bot.exchange_info['TESTUSDT'] = {'isAllowed': True}
         
         if not hasattr(bot, 'portfolio_guard_loop'):
@@ -55,7 +72,7 @@ def check_bot_logic():
             return False
             
         asyncio.run(bot.analyze('TESTUSDT'))
-        print("  [PASS] bot.analyze executed without runtime errors.")
+        print("  [PASS] bot.analyze executed with raw Binance ingestion schema without runtime errors.")
         return True
     except Exception as e:
         print(f"  [FAIL] bot.logic: {e}")

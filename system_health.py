@@ -62,23 +62,78 @@ def get_age_str(last_update, is_utc=False):
     except:
         return "Unknown"
 
+def check_trading_bot_log_health():
+    """Inspects journalctl logs for the currently running trading-bot.service for uncaught exceptions, tracebacks, or task failures."""
+    try:
+        start_ts = None
+        try:
+            ts_out = subprocess.check_output(['systemctl', 'show', '-p', 'ActiveEnterTimestamp', 'trading-bot.service'], text=True).strip()
+            if '=' in ts_out:
+                val = ts_out.split('=', 1)[1].strip()
+                if val:
+                    start_ts = val
+        except Exception:
+            pass
+
+        cmd = ['journalctl', '-u', 'trading-bot.service']
+        if start_ts:
+            cmd.extend(['--since', start_ts])
+        else:
+            cmd.extend(['--since', '-15m'])
+        cmd.extend(['--no-pager'])
+
+        res = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
+        errors = []
+        for line in res.splitlines():
+            lower = line.lower()
+            if any(err_word in lower for err_word in [
+                'traceback (most recent call last)',
+                'keyerror:',
+                'attributeerror:',
+                'nameerror:',
+                'typeerror:',
+                'task exception was never retrieved',
+                'critical error in process_and_analyze',
+                'asyncio background task failure'
+            ]):
+                errors.append(line.strip())
+        if errors:
+            return {
+                "status": "CRITICAL_ERROR",
+                "error_count": len(errors),
+                "latest_error": errors[-1]
+            }
+        return {"status": "HEALTHY", "error_count": 0, "latest_error": None}
+    except Exception as e:
+        return {"status": "UNKNOWN", "error_count": 0, "latest_error": str(e)}
+
 def main():
     lt = get_last_trade()
     tuner_info = get_tuner_info()
+    bot_log_health = check_trading_bot_log_health()
     
-    # Critical Check: Is the tuner in an Error state?
+    # Critical Check: Is the tuner or trading bot in an Error state?
     tuner_status = tuner_info['status']
     tuner_health = "HEALTHY"
     if "Error" in tuner_status or "CRITICAL" in tuner_info['last_log']:
         tuner_health = "CRITICAL FAILURE"
 
+    if bot_log_health['status'] == "CRITICAL_ERROR":
+        overall_status = "CRITICAL ERROR"
+    elif tuner_health != "HEALTHY":
+        overall_status = "ERROR"
+    else:
+        overall_status = "OK"
+
     health = {
         "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "overall_status": "OK" if tuner_health == "HEALTHY" else "ERROR",
+        "overall_status": overall_status,
         "services": {
             "trading-bot": get_service_status('trading-bot'),
+            "trading-bot-logs": bot_log_health['status'],
             "backtest-optimizer": get_service_status('backtest-optimizer')
         },
+        "bot_log_health": bot_log_health,
         "last_trade": lt,
         "last_trade_age": get_age_str(lt, is_utc=True),
         "tuner": {

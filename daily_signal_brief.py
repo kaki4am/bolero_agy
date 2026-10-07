@@ -465,10 +465,16 @@ def get_market_and_system_health():
     except Exception:
         pass
 
-    # Check systemd services
+    # Check systemd services and log health
     try:
         res = subprocess.run(['systemctl', 'is-active', 'trading-bot.service'], capture_output=True, text=True)
-        health['trading_bot_service'] = res.stdout.strip()
+        bot_active = res.stdout.strip()
+        from system_health import check_trading_bot_log_health
+        log_health = check_trading_bot_log_health()
+        if log_health['status'] == 'CRITICAL_ERROR':
+            health['trading_bot_service'] = f"CRITICAL_ERROR ({log_health.get('latest_error')})"
+        else:
+            health['trading_bot_service'] = bot_active
         res2 = subprocess.run(['systemctl', 'is-active', 'backtest-optimizer.service'], capture_output=True, text=True)
         health['optimizer_service'] = res2.stdout.strip()
     except Exception:
